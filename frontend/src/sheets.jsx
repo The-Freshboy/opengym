@@ -20,6 +20,7 @@ import { buildPlanBundle, parsePlan, mergePlan, printPlan } from './lib/plan-sha
 import { estimate1RM, best1RM, is1RMRecord, REP_CAP } from './lib/onerm.js'
 import { nextPrescription, applyPrescription, policyFor, defaultIncrement, POLICIES_FOR, POLICY_NAME, POLICY_DESC } from './lib/progression.js'
 import { MOBILE, shareExport } from './lib/mobile.js'
+import { prepareCompletedWorkoutEdit, recalculateCompletedWorkoutHistory, recalculateExerciseWeights } from './lib/completed-workout-edit.js'
 
 const S = () => useStore.getState().S
 const update = (...a) => useStore.getState().update(...a)
@@ -696,6 +697,7 @@ export const dayAssignSheet = day => ui().openSheet(close => <DayAssign day={day
 /* ============================ workout detail ============================ */
 function WorkoutDetail({ w, close }) {
   const st = useStore(s => s.S)
+  const update = useStore(s => s.update)
   return <>
     <h3>{w.name}</h3>
     <div className="muted small" style={{ marginBottom: 12 }}>{[fmtDate(w.d, true), ...durPart(w.end - w.start), fmtVol(w.vol, st.unit), ...(w.bw ? [fmtNum(w.bw) + ' ' + st.unit] : [])].join(' · ')}</div>
@@ -707,6 +709,11 @@ function WorkoutDetail({ w, close }) {
           <div className="ss">{e.sets.filter(s => s.done).map(s => setLabel(e.id, s, e.target)).join('  ·  ') || t('no sets')}</div></div>
       </div>
     })}
+    <Button variant="primary" icon="pencil" onClick={() => {
+      update(s => { const saved = s.workouts.find(x => x.id === w.id); if (saved) s.active = prepareCompletedWorkoutEdit(saved) })
+      close(); nav('/workout')
+    }}>{t('Edit workout')}</Button>
+    <div style={{ height: 8 }} />
     <Button variant="danger" onClick={() => confirmSheet({ title: t('Delete workout?'), message: t('This removes it from your history for good.'), confirmText: t('Delete'), danger: true, onConfirm: () => { update(s => { s.workouts = s.workouts.filter(x => x.id !== w.id) }); close(); toast(t('Workout deleted')) } })}>{t('Delete workout')}</Button>
   </>
 }
@@ -916,18 +923,24 @@ function doFinishWorkout() {
   const st = S()
   const A = st.active
   if (!A) return
+  const editing = !!A.editingWorkoutId
+  const recordIndex = editing ? st.workouts.findIndex(x => x.id === A.editingWorkoutId) : -1
+  const priorHistory = editing ? st.workouts.slice(0, Math.max(0, recordIndex)) : st.workouts
+  const historyForRecords = { ...st, workouts: priorHistory }
   const prs = []
   const e1prs = []
   A.entries.forEach(e => {
     const mx = Math.max(0, ...e.sets.filter(s => s.done).map(s => s.w))
-    if (mx > 0 && mx > bestWeightFor(st, e.id)) prs.push(e.id)
+    if (mx > 0 && mx > bestWeightFor(historyForRecords, e.id)) prs.push(e.id)
     // A heavier estimate without a heavier top set is its own kind of progress —
     // same weight for more reps. Reported separately so it can't be read as a load PR.
-    const rec = is1RMRecord(st, e.id, e)
+    const rec = is1RMRecord(historyForRecords, e.id, e)
     if (rec && !prs.includes(e.id)) e1prs.push({ id: e.id, ...rec })
   })
+  const preserved = editing && recordIndex >= 0 ? st.workouts[recordIndex] : {}
   const w = {
-    id: A.id, d: A.d, start: A.start, end: Date.now(), routineId: A.routineId, name: A.name, bw: A.bw,
+    ...preserved,
+    id: A.id, d: A.d, start: A.start, end: editing ? A.originalEnd : Date.now(), routineId: A.routineId, name: A.name, bw: A.bw,
     // `target` (what the session prescribed) is kept alongside the sets: without it a
     // finished workout cannot say whether it hit its reps, and a timed session reads back
     // as "0 reps". It is what the progression engine works from.
@@ -940,10 +953,21 @@ function doFinishWorkout() {
       const mx = Math.max(0, ...e.sets.filter(x => x.done).map(x => x.w || 0), e.topW || 0)
       if (mx > 0) { const cur = s.exWeights[e.id]; if (!cur || mx > cur.w) s.exWeights[e.id] = { w: mx, d: w.d } }
     })
-    s.workouts.push(w)
+    if (editing) {
+      const idx = s.workouts.findIndex(x => x.id === A.editingWorkoutId)
+      if (idx >= 0) {
+        const touched = [...s.workouts[idx].entries, ...w.entries].map(e => e.id)
+        s.workouts[idx] = w
+        s.workouts = recalculateCompletedWorkoutHistory(s.workouts)
+        s.exWeights = recalculateExerciseWeights(s.exWeights, s.workouts, touched)
+      }
+    } else s.workouts.push(w)
     s.active = null
   })
   useUI.getState().stopRest()
-  beep(snd(), 880, 0.15); beep(snd(), 1100, 0.15, 0.18); beep(snd(), 1320, 0.3, 0.36)
-  ui().openSheet(close => <FinishSummary w={w} prs={prs} e1prs={e1prs} close={close} />, { kind: 'center', locked: true })
+  if (editing) { toast(t('Workout updated')); nav('/history') }
+  else {
+    beep(snd(), 880, 0.15); beep(snd(), 1100, 0.15, 0.18); beep(snd(), 1320, 0.3, 0.36)
+    ui().openSheet(close => <FinishSummary w={w} prs={prs} e1prs={e1prs} close={close} />, { kind: 'center', locked: true })
+  }
 }
