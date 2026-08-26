@@ -694,6 +694,21 @@ function DayAssign({ day, close }) {
 }
 export const dayAssignSheet = day => ui().openSheet(close => <DayAssign day={day} close={close} />)
 
+function ScheduledDayActions({ day, routineId, close }) {
+  const r = useStore(s => s.S.routines.find(x => x.id === routineId))
+  if (!r) return null
+  return <>
+    <h3>{t(DAYN[day])}</h3>
+    <div className="muted small" style={{ margin: '-4px 0 14px' }}>{r.name}</div>
+    <Button variant="primary" icon="list" onClick={() => { close(); nav('/plan/r/' + r.id) }}>{t('View exercises')}</Button>
+    <div style={{ height: 8 }} />
+    <Button variant="tinted" icon="calendar" onClick={() => { close(); dayAssignSheet(day) }}>{t('Change routine')}</Button>
+  </>
+}
+
+export const scheduledDayActionsSheet = (day, routineId) =>
+  ui().openSheet(close => <ScheduledDayActions day={day} routineId={routineId} close={close} />)
+
 /* ============================ workout detail ============================ */
 function WorkoutDetail({ w, close }) {
   const st = useStore(s => s.S)
