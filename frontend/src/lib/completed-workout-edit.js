@@ -49,3 +49,16 @@ export function recalculateExerciseWeights(exWeights, workouts, exerciseIds) {
   }
   return next
 }
+
+export function removeCompletedWorkout(workouts, exWeights, workoutId) {
+  const removed = (workouts || []).find(workout => workout.id === workoutId)
+  if (!removed) return { workouts: workouts || [], exWeights: exWeights || {} }
+  const touched = (removed.entries || []).map(entry => entry.id)
+  const nextWorkouts = recalculateCompletedWorkoutHistory(
+    workouts.filter(workout => workout.id !== workoutId)
+  )
+  return {
+    workouts: nextWorkouts,
+    exWeights: recalculateExerciseWeights(exWeights, nextWorkouts, touched)
+  }
+}

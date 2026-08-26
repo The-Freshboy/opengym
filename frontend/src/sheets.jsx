@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
 import { useStore } from './store/useStore.js'
 import { useUI } from './store/useUI.js'
-import { EXDB, EXIDX, BODYPARTS, isCardio, allExercises, equipmentOf } from './lib/exercises.js'
+import { EXDB, EXIDX, BODYPARTS, isCardio, allExercises, equipmentOf, exOr } from './lib/exercises.js'
 import { fmtDate, fmtNum, fmtVol, fmtDur, durPart, todayISO, uid, exCount, DAYN, MONTHS_LONG, ACCENTS } from './lib/format.js'
-import { lastEntryFor, bestWeightFor, buildSets, effectiveRoutineId, workoutVolume, setsDone, setsDoneActive, lastBW, supersetUnits, unitOf, setLabel, defaultConfig, cleanupSg, modeOf, effortOf } from './lib/history.js'
+import { lastEntryFor, bestWeightFor, buildSets, effectiveRoutineId, workoutVolume, setsDone, setsDoneActive, lastBW, supersetUnits, unitOf, setLabel, defaultConfig, cleanupSg, modeOf, effortOf, exLine } from './lib/history.js'
 import { beep, vibrate } from './lib/sound.js'
 import { t, instrFor, getLang, INSTR_LANGS } from './lib/i18n.js'
 import { nav } from './lib/nav.js'
@@ -20,7 +20,7 @@ import { buildPlanBundle, parsePlan, mergePlan, printPlan } from './lib/plan-sha
 import { estimate1RM, best1RM, is1RMRecord, REP_CAP } from './lib/onerm.js'
 import { nextPrescription, applyPrescription, policyFor, defaultIncrement, POLICIES_FOR, POLICY_NAME, POLICY_DESC } from './lib/progression.js'
 import { MOBILE, shareExport } from './lib/mobile.js'
-import { prepareCompletedWorkoutEdit, recalculateCompletedWorkoutHistory, recalculateExerciseWeights } from './lib/completed-workout-edit.js'
+import { prepareCompletedWorkoutEdit, recalculateCompletedWorkoutHistory, recalculateExerciseWeights, removeCompletedWorkout } from './lib/completed-workout-edit.js'
 
 const S = () => useStore.getState().S
 const update = (...a) => useStore.getState().update(...a)
@@ -694,13 +694,34 @@ function DayAssign({ day, close }) {
 }
 export const dayAssignSheet = day => ui().openSheet(close => <DayAssign day={day} close={close} />)
 
+function RoutinePreview({ routineId, close }) {
+  const st = useStore(s => s.S)
+  const r = st.routines.find(x => x.id === routineId)
+  if (!r) return null
+  return <>
+    <h3>{r.name}</h3>
+    {r.ex.length ? <div className="list">{r.ex.map((cfg, i) => {
+      const ex = exOr(cfg.id)
+      return <div key={`${cfg.id}-${i}`} className="item">
+        <Thumb ex={ex} />
+        <div className="grow"><div className="tt capitalize">{ex.n}</div><div className="ss">{exLine(cfg, st.unit)}</div></div>
+      </div>
+    })}</div> : <div className="empty"><div className="ico"><Icon name="dumbbell" /></div>{t('No exercises in this routine.')}</div>}
+    <div style={{ height: 12 }} />
+    <Button variant="tinted" icon="pencil" onClick={() => { close(); nav('/plan/r/' + r.id) }}>{t('Edit routine')}</Button>
+  </>
+}
+
+export const routinePreviewSheet = routineId =>
+  ui().openSheet(close => <RoutinePreview routineId={routineId} close={close} />)
+
 function ScheduledDayActions({ day, routineId, close }) {
   const r = useStore(s => s.S.routines.find(x => x.id === routineId))
   if (!r) return null
   return <>
     <h3>{t(DAYN[day])}</h3>
     <div className="muted small" style={{ margin: '-4px 0 14px' }}>{r.name}</div>
-    <Button variant="primary" icon="list" onClick={() => { close(); nav('/plan/r/' + r.id) }}>{t('View exercises')}</Button>
+    <Button variant="primary" icon="list" onClick={() => { close(); routinePreviewSheet(r.id) }}>{t('View exercises')}</Button>
     <div style={{ height: 8 }} />
     <Button variant="tinted" icon="calendar" onClick={() => { close(); dayAssignSheet(day) }}>{t('Change routine')}</Button>
   </>
@@ -729,7 +750,7 @@ function WorkoutDetail({ w, close }) {
       close(); nav('/workout')
     }}>{t('Edit workout')}</Button>
     <div style={{ height: 8 }} />
-    <Button variant="danger" onClick={() => confirmSheet({ title: t('Delete workout?'), message: t('This removes it from your history for good.'), confirmText: t('Delete'), danger: true, onConfirm: () => { update(s => { s.workouts = s.workouts.filter(x => x.id !== w.id) }); close(); toast(t('Workout deleted')) } })}>{t('Delete workout')}</Button>
+    <Button variant="danger" onClick={() => confirmSheet({ title: t('Delete workout?'), message: t('This removes it from your history for good.'), confirmText: t('Delete'), danger: true, onConfirm: () => { update(s => { const next = removeCompletedWorkout(s.workouts, s.exWeights, w.id); s.workouts = next.workouts; s.exWeights = next.exWeights }); close(); toast(t('Workout deleted')) } })}>{t('Delete workout')}</Button>
   </>
 }
 export const workoutDetailSheet = w => ui().openSheet(close => <WorkoutDetail w={w} close={close} />)

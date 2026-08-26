@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { prepareCompletedWorkoutEdit, recalculateCompletedWorkoutHistory, recalculateExerciseWeights } from './completed-workout-edit.js'
+import { prepareCompletedWorkoutEdit, recalculateCompletedWorkoutHistory, recalculateExerciseWeights, removeCompletedWorkout } from './completed-workout-edit.js'
 
 const workout = (id, d, weight, reps = 5) => ({
   id, d, start: 100, end: 200, entries: [{ id: 'bench', sets: [{ w: weight, r: reps, done: true }] }],
@@ -27,5 +27,16 @@ describe('completed workout editing', () => {
     const result = recalculateExerciseWeights(current, [workout('w1', '2026-01-08', 25)], ['bench'])
     expect(result.bench).toEqual({ w: 25, d: '2026-01-08' })
     expect(result.squat).toEqual(current.squat)
+  })
+
+  it('recalculates later PRs and remembered weight after deleting a workout', () => {
+    const result = removeCompletedWorkout([
+      workout('w1', '2026-01-01', 100),
+      workout('w2', '2026-01-08', 90),
+      workout('w3', '2026-01-15', 95),
+    ], { bench: { w: 100, d: '2026-01-01' } }, 'w1')
+    expect(result.workouts.map(w => w.id)).toEqual(['w2', 'w3'])
+    expect(result.workouts.map(w => w.prs)).toEqual([['bench'], ['bench']])
+    expect(result.exWeights.bench).toEqual({ w: 95, d: '2026-01-15' })
   })
 })
