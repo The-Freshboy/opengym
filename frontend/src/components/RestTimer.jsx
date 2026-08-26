@@ -1,5 +1,6 @@
 import { useEffect } from 'react'
 import { useUI } from '../store/useUI.js'
+import { useStore } from '../store/useStore.js'
 import { t } from '../lib/i18n.js'
 import { Button } from './ui.jsx'
 
@@ -12,8 +13,9 @@ const clock = sec => Math.floor(sec / 60) + ':' + String(sec % 60).padStart(2, '
 export default function RestTimer() {
   const timer = useUI(s => s.timer)
   const work = useUI(s => s.work)
+  const editing = useStore(s => !!s.S.active?.editingWorkoutId)
   const { addRest, stopRest, finishWorkEarly, stopWork } = useUI()
-  const on = work || timer
+  const on = editing ? null : work || timer
   // The bar is fixed above the tab bar and floats over whatever is beneath it — during a
   // rest that was the next set's row. Extra bottom padding lets the page scroll clear.
   useEffect(() => {

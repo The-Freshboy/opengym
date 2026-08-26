@@ -54,7 +54,7 @@ function Elapsed({ start }) {
 }
 
 /* ---------- one exercise block (reps: weight×reps · time: a held duration · cardio: duration+speed) ---------- */
-function ExerciseBlock({ entryIdx, compact, onToggle, onField, onAddSet, onRemoveSet, onStartTimed }) {
+function ExerciseBlock({ entryIdx, compact, editing, onToggle, onField, onAddSet, onRemoveSet, onStartTimed }) {
   const S = useStore(s => s.S)
   const working = useUI(s => s.work)
   const entry = S.active.entries[entryIdx]
@@ -99,7 +99,7 @@ function ExerciseBlock({ entryIdx, compact, onToggle, onField, onAddSet, onRemov
     </div>
   )
   return <>
-    <Media ex={ex} key={entry.id} compact={compact} minimizable />
+    <Media ex={ex} key={entry.id} compact={compact} minimizable={!editing} static={editing} />
     <div className="row between" style={{ marginBottom: 6 }}>
       <div style={{ fontSize: compact ? 17 : 20, fontWeight: 600, letterSpacing: '-.02em', textTransform: 'capitalize', lineHeight: 1.2 }}>{ex.n}</div>
       <button className="iconbtn" aria-label={t('Details')} onClick={() => exerciseDetailSheet(ex)}><Icon name="info" /></button>
@@ -125,9 +125,9 @@ function ExerciseBlock({ entryIdx, compact, onToggle, onField, onAddSet, onRemov
         {col3 && cell(s, i, col3, 'eff')}
         {/* A timed set is started, not typed: the timer counts the hold down and checks the
             set off itself. The checkbox stays for anyone who timed it on their own watch. */}
-        {timed && <button className="setgo" aria-label={t('Start set')} disabled={s.done || !!working}
+        {!editing && timed && <button className="setgo" aria-label={t('Start set')} disabled={s.done || !!working}
           onClick={() => onStartTimed(i)}><Icon name="play" /></button>}
-        <Check checked={s.done} onChange={() => onToggle(i)} />
+        {!editing && <Check checked={s.done} onChange={() => onToggle(i)} />}
       </div>)}
       <div style={{ height: 8 }} />
       <div className="row">
@@ -165,9 +165,9 @@ function ActiveWorkout() {
   const addSet = idx => mutEntry(idx, e => {
     const l = e.sets[e.sets.length - 1]
     const m = modeOf({ ...(e.target || {}), id: e.id })
-    if (m === 'cardio') e.sets.push({ min: l ? l.min : (e.target.min || 20), speed: l ? l.speed : (e.target.speed || 8), done: false })
-    else if (m === 'time') e.sets.push({ sec: l ? l.sec : (e.target.sec || 45), w: l ? (l.w || 0) : (e.target.weight || 0), done: false })
-    else e.sets.push({ w: l ? l.w : 0, r: l ? l.r : e.target.reps, done: false })
+    if (m === 'cardio') e.sets.push({ min: l ? l.min : (e.target.min || 20), speed: l ? l.speed : (e.target.speed || 8), done: editing })
+    else if (m === 'time') e.sets.push({ sec: l ? l.sec : (e.target.sec || 45), w: l ? (l.w || 0) : (e.target.weight || 0), done: editing })
+    else e.sets.push({ w: l ? l.w : 0, r: l ? l.r : e.target.reps, done: editing })
   })
   const removeSet = idx => mutEntry(idx, e => { if (e.sets.length > 1) e.sets.pop() })
   const removeExercise = idx => update(s => {
@@ -182,6 +182,7 @@ function ActiveWorkout() {
   // checks the set off through the normal path, so rest, supersets and the finish prompt all
   // behave exactly as they do for a reps set.
   const startTimed = (idx, i) => {
+    if (editing) return
     const e = A.entries[idx]
     useUI.getState().startWork(e.sets[i].sec || 45, exOr(e.id).n, elapsed => {
       mutEntry(idx, en => { en.sets[i].sec = elapsed })
@@ -190,6 +191,7 @@ function ActiveWorkout() {
   }
 
   const toggle = (idx, i) => {
+    if (editing) return
     const m = modeAt(idx)
     const cardioEntry = m === 'cardio'
     const isLastUnit = unitIdx >= units.length - 1
@@ -247,10 +249,10 @@ function ActiveWorkout() {
   return <div className="narrow">
     <div className="hdr">
       <button className="iconbtn" aria-label={t('Discard')} onClick={() => confirmSheet({ title: editing ? t('Discard changes?') : t('Discard workout?'), message: editing ? t('The saved workout will remain unchanged.') : t('The sets you logged in this session will be lost.'), confirmText: t('Discard'), danger: true, onConfirm: () => { update(s => { s.active = null }); stopRest(); nav(editing ? '/history' : '/home') } })}><Icon name="xmark" /></button>
-      <div style={{ textAlign: 'center' }}><div style={{ fontWeight: 600 }}>{editing ? t('Edit workout') : A.name}</div><div className="sub">{editing ? fmtDate(A.d, true) : <Elapsed start={A.start} />} · {t('{0} sets', done + '/' + total)}</div></div>
+      <div style={{ textAlign: 'center' }}><div style={{ fontWeight: 600 }}>{editing ? t('Edit workout') : A.name}</div><div className="sub">{editing ? fmtDate(A.d, true) : <Elapsed start={A.start} />} · {t('{0} sets', editing ? total : done + '/' + total)}</div></div>
       <button className="iconbtn" style={{ color: 'var(--acc)' }} aria-label={editing ? t('Save changes') : t('Finish')} onClick={finishWorkout}><Icon name="check" /></button>
     </div>
-    <div className="wprog"><i style={{ width: (total ? done / total * 100 : 0) + '%' }} /></div>
+    {!editing && <div className="wprog"><i style={{ width: (total ? done / total * 100 : 0) + '%' }} /></div>}
 
     {A.entries.length ? <>
       <div className="muted small" style={{ marginBottom: 6 }}>{isSuperset ? t('Superset {0} / {1}', unitIdx + 1, units.length) : t('Exercise {0} / {1}', unitIdx + 1, units.length)}</div>
@@ -259,12 +261,12 @@ function ActiveWorkout() {
           <div className="ss-hd"><Icon name="link" />{t('Superset · do these back-to-back, rest after both')}</div>
           {unit.map((idx, k) => <div key={idx} className="ss-ex">
             {k > 0 && <div className="ss-amp">+</div>}
-            <ExerciseBlock entryIdx={idx} compact
+            <ExerciseBlock entryIdx={idx} compact editing={editing}
               onToggle={i => toggle(idx, i)} onField={(i, f, v) => setField(idx, i, f, v)} onAddSet={() => addSet(idx)} onRemoveSet={() => removeSet(idx)} onStartTimed={i => startTimed(idx, i)} />
           </div>)}
         </div>
       ) : (
-        <ExerciseBlock entryIdx={cur} onToggle={i => toggle(cur, i)} onField={(i, f, v) => setField(cur, i, f, v)} onAddSet={() => addSet(cur)} onRemoveSet={() => removeSet(cur)} onStartTimed={i => startTimed(cur, i)} />
+        <ExerciseBlock entryIdx={cur} editing={editing} onToggle={i => toggle(cur, i)} onField={(i, f, v) => setField(cur, i, f, v)} onAddSet={() => addSet(cur)} onRemoveSet={() => removeSet(cur)} onStartTimed={i => startTimed(cur, i)} />
       )}
     </> : <div className="empty"><div className="ico"><Icon name="shuffle" /></div>{t('Freestyle workout — add your first exercise.')}</div>}
 
@@ -277,9 +279,11 @@ function ActiveWorkout() {
     <Button onClick={() => exercisePicker(ex => exConfigSheet(ex, null, cfg => update(s => {
       const full = { ...cfg, id: ex.id }
       const plan = editing ? null : nextPrescription(s, full, s.routines.find(r => r.id === s.active.routineId))
-      s.active.entries.push({ id: ex.id, target: { ...cfg }, plan, sets: applyPrescription(buildSets(s, full), plan) })
+      const sets = applyPrescription(buildSets(s, full), plan)
+      if (editing) sets.forEach(set => { set.done = true })
+      s.active.entries.push({ id: ex.id, target: { ...cfg }, plan, sets })
       s.active.cur = s.active.entries.length - 1
-    }), null, S.routines.find(r => r.id === A.routineId)))} icon="plus">{t('Add exercise')}</Button>
+    }), null, S.routines.find(r => r.id === A.routineId), editing ? t('Add to workout') : undefined))} icon="plus">{t('Add exercise')}</Button>
     {A.entries.length > 0 && <><div style={{ height: 6 }} />
       <div style={{ display: 'flex', justifyContent: 'center' }}><Button size="sm" icon="minus" style={{ color: 'var(--red)' }} onClick={() => {
         const e = A.entries[cur]

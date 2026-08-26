@@ -4,7 +4,14 @@ const clone = value => JSON.parse(JSON.stringify(value))
 
 export function prepareCompletedWorkoutEdit(workout) {
   if (!workout?.id) throw new TypeError('A saved workout with an id is required')
-  return { ...clone(workout), cur: 0, editingWorkoutId: workout.id, originalEnd: workout.end }
+  const edit = clone(workout)
+  // Planned-but-unfinished rows are useful while training, but history only counts checked
+  // sets. Start the editor from what was actually logged; Add set remains available.
+  edit.entries = (edit.entries || []).map(entry => ({
+    ...entry,
+    sets: (entry.sets || []).filter(set => set.done).map(set => ({ ...set, done: true }))
+  })).filter(entry => entry.sets.length)
+  return { ...edit, cur: 0, editingWorkoutId: workout.id, originalEnd: workout.end }
 }
 
 const entryBest = entry => {

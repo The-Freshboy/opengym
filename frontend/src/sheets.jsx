@@ -483,7 +483,7 @@ function ProgressionFields({ ex, mode, c, setC, routine, unit }) {
   </>
 }
 
-function ExConfig({ ex, existing, onSave, onDelete, close, routine }) {
+function ExConfig({ ex, existing, onSave, onDelete, close, routine, addLabel }) {
   const st = useStore(s => s.S)
   const cardio = isCardio(ex.id)
   const [c, setC] = useState(existing || defaultConfig(ex.id))
@@ -540,12 +540,12 @@ function ExConfig({ ex, existing, onSave, onDelete, close, routine }) {
       {t('A timer runs while you hold the set. Leave the weight at 0 for bodyweight holds.')}
     </div>}
     <ProgressionFields ex={ex} mode={mode} c={c} setC={setC} routine={routine} unit={st.unit} />
-    <Button variant="primary" onClick={save}>{existing ? t('Save') : t('Add to routine')}</Button>
+    <Button variant="primary" onClick={save}>{existing ? t('Save') : (addLabel || t('Add to routine'))}</Button>
     {ex.custom && <><div style={{ height: 8 }} /><Button icon="pencil" onClick={() => { close(); customExSheet(ex) }}>{t('Edit or delete this exercise')}</Button></>}
     {onDelete && <><div style={{ height: 8 }} /><Button variant="danger" onClick={() => { close(); onDelete() }}>{t('Remove from routine')}</Button></>}
   </>
 }
-export const exConfigSheet = (ex, existing, onSave, onDelete, routine) => ui().openSheet(close => <ExConfig ex={ex} existing={existing} onSave={onSave} onDelete={onDelete} routine={routine} close={close} />)
+export const exConfigSheet = (ex, existing, onSave, onDelete, routine, addLabel) => ui().openSheet(close => <ExConfig ex={ex} existing={existing} onSave={onSave} onDelete={onDelete} routine={routine} addLabel={addLabel} close={close} />)
 
 /* ============================ glyph picker ============================ */
 // Grouped by what the glyph means for a training day, so picking one is a scan
@@ -746,6 +746,8 @@ function WorkoutDetail({ w, close }) {
       </div>
     })}
     <Button variant="primary" icon="pencil" onClick={() => {
+      useUI.getState().stopWork()
+      useUI.getState().stopRest()
       update(s => { const saved = s.workouts.find(x => x.id === w.id); if (saved) s.active = prepareCompletedWorkoutEdit(saved) })
       close(); nav('/workout')
     }}>{t('Edit workout')}</Button>
@@ -951,6 +953,11 @@ export function finishWorkout() {
   if (!A) return
   const done = setsDoneActive(A)
   const total = A.entries.reduce((n, e) => n + e.sets.length, 0)
+  if (A.editingWorkoutId) {
+    if (!done) { toast(t('Add at least one set, or delete the workout instead.')); return }
+    doFinishWorkout()
+    return
+  }
   if (!done) { confirmSheet({ title: t('Nothing logged yet'), message: t('You haven’t checked off any sets. Finish the workout anyway?'), confirmText: t('Finish anyway'), onConfirm: doFinishWorkout }); return }
   if (done < total) { confirmSheet({ title: t('Finish early?'), message: t(total - done === 1 ? '{0} set still unchecked. Finish the workout now?' : '{0} sets still unchecked. Finish the workout now?', total - done), confirmText: t('Finish workout'), onConfirm: doFinishWorkout }); return }
   doFinishWorkout()

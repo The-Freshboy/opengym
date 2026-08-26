@@ -14,5 +14,8 @@ export default defineConfig({
       '/gif': { target: media, changeOrigin: true }
     }
   },
-  build: { chunkSizeWarningLimit: 1500 }
+  // Routes and sheets are lazy-loaded. The largest remaining file is the optional Hindi
+  // exercise-instruction pack (loaded only after choosing Hindi), so keep the warning just
+  // above that generated data file while still catching growth in the startup bundle.
+  build: { chunkSizeWarningLimit: 1600 }
 })

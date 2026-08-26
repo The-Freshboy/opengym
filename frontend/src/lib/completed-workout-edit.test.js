@@ -14,6 +14,16 @@ describe('completed workout editing', () => {
     expect(saved.entries[0].sets[0].w).toBe(80)
   })
 
+  it('loads only sets that were actually logged', () => {
+    const saved = workout('w1', '2026-08-01', 80)
+    saved.entries[0].sets.push({ w: 80, r: 5, done: false })
+    saved.entries.push({ id: 'row', sets: [{ w: 60, r: 8, done: false }] })
+    const edit = prepareCompletedWorkoutEdit(saved)
+    expect(edit.entries).toHaveLength(1)
+    expect(edit.entries[0].sets).toEqual([{ w: 80, r: 5, done: true }])
+    expect(saved.entries).toHaveLength(2)
+  })
+
   it('recalculates volume and PR badges across later history', () => {
     const result = recalculateCompletedWorkoutHistory([
       workout('w1', '2026-01-01', 100), workout('w2', '2026-01-08', 90), workout('w3', '2026-01-15', 110),
