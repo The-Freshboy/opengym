@@ -348,6 +348,18 @@ h4.sec{
 .item .tt{font-size:16px;font-weight:400;line-height:1.25;letter-spacing:-.009em}
 .item .ss{color:var(--label-2);font-size:13px;margin-top:2px}
 .item .grow{flex:1;min-width:0}
+.routine-preview{align-items:flex-start;padding-top:12px;padding-bottom:12px}
+.routine-preview>.lrow-i,.routine-preview>.chev{margin-top:8px}
+.routine-exercises{
+  list-style-position:inside;margin:9px 0 0;padding:8px 0 0;
+  border-top:1px solid var(--separator);color:var(--label-2);
+}
+.routine-exercises li{
+  display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;
+  padding:3px 0;font-size:13px;line-height:1.35;
+}
+.routine-exercise-name{color:var(--label);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.routine-exercise-plan{color:var(--label-2);white-space:nowrap}
 .chev{color:var(--label);flex:none;font-size:15px;--icon-stroke:2.4}
 .tag{
   display:inline-flex;align-items:center;gap:3px;background:var(--surface-2);

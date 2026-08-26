@@ -9,6 +9,8 @@ import { glyphOf, DEFAULT_GLYPH } from '../lib/glyphs.js'
 import { coachAvailable } from '../lib/coach.js'
 import { DEMO } from '../lib/demo.js'
 import { MOBILE } from '../lib/mobile.js'
+import { exOr } from '../lib/exercises.js'
+import { exLine } from '../lib/history.js'
 
 export default function Plan() {
   const nav = useNavigate()
@@ -46,9 +48,18 @@ export default function Plan() {
         <h4 className="sec" style={{ margin: 0 }}>{t('Routines')}</h4>
         <Button size="sm" variant="tinted" icon="plus" onClick={addRoutine}>{t('New')}</Button>
       </div>
-      {S.routines.length ? <div className="list">{S.routines.map(r => <div key={r.id} className="item" onClick={() => nav('/plan/r/' + r.id)}>
+      {S.routines.length ? <div className="list">{S.routines.map(r => <div key={r.id} className="item routine-preview" onClick={() => nav('/plan/r/' + r.id)}>
         <span className="lrow-i"><Icon name={glyphOf(r.emoji)} /></span>
-        <div className="grow"><div className="tt">{r.name}</div><div className="ss">{exCount(r.ex.length)}</div></div>
+        <div className="grow">
+          <div className="tt">{r.name}</div>
+          <div className="ss">{exCount(r.ex.length)}</div>
+          {r.ex.length > 0 && <ol className="routine-exercises">
+            {r.ex.map((cfg, i) => <li key={`${cfg.id}-${i}`}>
+              <span className="routine-exercise-name capitalize">{exOr(cfg.id).n}</span>
+              <span className="routine-exercise-plan">{exLine(cfg, S.unit)}</span>
+            </li>)}
+          </ol>}
+        </div>
         <Icon name="chevronRight" className="chev" /></div>)}</div> : <>
         <div className="empty"><div className="ico"><Icon name="clipboard" /></div>{t('No routines yet.')}<br />{t('Create one or load the starter plan.')}</div>
         <Button icon="sparkles" onClick={loadStarterPlan}>{t('Load starter plan (Push / Pull / Legs)')}</Button>
