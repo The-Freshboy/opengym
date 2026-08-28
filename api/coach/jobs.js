@@ -18,6 +18,7 @@ import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import * as cfgStore from './config.js';
 import { adapterFor } from './adapters/index.js';
+import { scientificReview } from './science.js';
 import * as payloadLib from './payload.js';
 import { extractJSON, validatePlan, validateReview, contractOK } from './validate.js';
 
@@ -232,6 +233,7 @@ async function execute(job) {
     refine: job.refine,
     previous: pendingCreate?.bundle || null
   });
+  if (job.kind === 'review') payload.science = scientificReview(payload);
 
   const jobDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coach-'));
   const env = cfgStore.jobEnv(jobDir);
@@ -251,6 +253,20 @@ async function execute(job) {
       return finish(job, { outcome: 'failed', errorClass: attempt.errorClass, detail: attempt.detail });
     }
     if (attempt.nochange) {
+      // A manual scientific review still deserves a readable report even when the safest
+      // recommendation is to leave the plan alone. Scheduled reviews stay quiet unless they
+      // have an actionable change, preserving the no-noise cadence promise.
+      if (job.trigger === 'manual' && job.kind === 'review') {
+        const pending = {
+          id: job.id, kind: job.kind, createdAt: Date.now(),
+          expiresAt: Date.now() + PENDING_DAYS * 86400000,
+          planHash: hashPlan(payloadLib.canonicalPlan(S)), iteration: 1,
+          summary: attempt.reading || 'No plan change is supported by the available data.',
+          evidence: { from: payload.window?.from || null, to: payload.window?.to || null, sessions: payload.window?.workouts?.length || 0 },
+          changes: [], notes: [], science: payload.science
+        };
+        return finish(job, { outcome: 'ready', pending });
+      }
       return finish(job, { outcome: 'nochange', pending: null, detail: null });
     }
     const pending = {
@@ -260,6 +276,7 @@ async function execute(job) {
       expiresAt: Date.now() + PENDING_DAYS * 86400000,
       planHash: hashPlan(payloadLib.canonicalPlan(S)),
       iteration: job.refine ? (pendingCreate?.iteration || 1) + 1 : 1,
+      ...(job.kind === 'review' ? { science: payload.science } : {}),
       ...attempt.result
     };
     return finish(job, { outcome: 'ready', pending });

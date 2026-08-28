@@ -108,15 +108,16 @@ test('a provider that crashes is reported, not retried behind the user\'s back',
   assert.equal(jobs.readUser(uid).history.filter(h => h.outcome === 'failed').length, 1, 'exactly one attempt');
 });
 
-test('nothing worth changing produces no proposal and nothing to notify about', async () => {
+test('a manual no-change review returns its scientific report', async () => {
   const uid = 'u-nochange';
   writeState(DIR, uid, sampleState());
   process.env.FIXTURE_MODE = 'nochange';
   jobs.enqueue(uid, { kind: 'review' });
   const s = await settle(uid);
   delete process.env.FIXTURE_MODE;
-  assert.equal(lastOutcome(uid).outcome, 'nochange');
-  assert.equal(s.pending, null);
+  assert.equal(lastOutcome(uid).outcome, 'ready');
+  assert.equal(s.pending.changes.length, 0);
+  assert.ok(s.pending.science.findings.length);
 });
 
 test('resolving a proposal records the decision and clears it', async () => {

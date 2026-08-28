@@ -1,6 +1,8 @@
 # Task: review their training and propose plan changes
 
-Read `window` (what they actually did), `aggregates` (stalls, adherence, coverage), `bodyweight`, and `userNote` if present. Then decide whether the **plan** should change.
+Read `window` (what they actually did), `aggregates` (stalls, adherence, coverage), `science` (server-calculated measurements, limitations and versioned sources), `bodyweight`, and `userNote` if present. Then decide whether the **plan** should change.
+
+Treat `science.measurements` as measured facts and `science.findings` as conservative flags, not diagnoses or proof of an individual optimum. Do not invent a threshold or citation. When a finding supports a change, name its measured value in `why`; source links are displayed by the app from the server report.
 
 ## How to decide
 

@@ -364,7 +364,7 @@ export function applyChangeSet(s, proposal, acceptedIds) {
   appendLog(s, {
     kind: 'review', at: Date.now(), proposalId: proposal.id,
     summary: proposal.summary || '', evidence: proposal.evidence || null,
-    notes: proposal.notes || [], decisions: [...applied, ...rejected]
+    science: proposal.science || null, notes: proposal.notes || [], decisions: [...applied, ...rejected]
   })
   coachOf(s).lastReview = { at: Date.now() }
   return { applied: applied.length, rejected: rejected.length }
@@ -374,7 +374,7 @@ export function applyChangeSet(s, proposal, acceptedIds) {
 export function recordDismissal(s, proposal) {
   appendLog(s, {
     kind: proposal.kind === 'create' ? 'create' : 'review', at: Date.now(), proposalId: proposal.id,
-    summary: proposal.summary || '', dismissed: true,
+    summary: proposal.summary || '', science: proposal.science || null, dismissed: true,
     decisions: (proposal.changes || []).map(c => ({ id: c.id, type: c.type, why: c.why, status: 'rejected' }))
   })
   if (proposal.kind !== 'create') coachOf(s).lastReview = { at: Date.now() }

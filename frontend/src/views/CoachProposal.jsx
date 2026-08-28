@@ -136,8 +136,15 @@ function ChangeSet({ p, S, update, toast, nav }) {
   const usable = applicable(marked)
   const [accepted, setAccepted] = useState(() => new Set(usable.map(c => c.id)))
   const toggle = id => setAccepted(s => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n })
+  const reportOnly = marked.changes.length === 0
 
   const apply = () => {
+    if (reportOnly) {
+      update(s => { recordDismissal(s, marked) })
+      resolvePending({ accepted: [] }).catch(() => {})
+      nav('/coach')
+      return
+    }
     const ids = [...accepted].filter(id => usable.some(c => c.id === id))
     if (!ids.length) { discard(); return }
     try {
@@ -165,6 +172,8 @@ function ChangeSet({ p, S, update, toast, nav }) {
         : null} />
 
     {!!marked.summary && <div className="card"><div className="muted small" style={{ lineHeight: 1.55 }}>{marked.summary}</div></div>}
+
+    {marked.science && <ScienceCard report={marked.science} />}
 
     {marked.planMoved && <div className="card" style={{ borderColor: 'var(--yellow)' }}>
       <div className="row" style={{ gap: 9 }}>
@@ -206,11 +215,41 @@ function ChangeSet({ p, S, update, toast, nav }) {
     </div>}
 
     <Button variant="primary" icon="check" onClick={apply}>
-      {accepted.size ? t(accepted.size === 1 ? 'Apply {0} change' : 'Apply {0} changes', accepted.size) : t('Apply nothing')}
+      {reportOnly ? t('Done') : accepted.size ? t(accepted.size === 1 ? 'Apply {0} change' : 'Apply {0} changes', accepted.size) : t('Apply nothing')}
     </Button>
     <div style={{ height: 8 }} />
-    <Button danger onClick={discard}>{t('Dismiss all')}</Button>
+    {!reportOnly && <Button danger onClick={discard}>{t('Dismiss all')}</Button>}
     <div style={{ height: 24 }} />
+  </div>
+}
+
+function ScienceCard({ report }) {
+  const [open, setOpen] = useState(true)
+  const source = id => (report.sources || []).find(s => s.id === id)
+  return <div className="card">
+    <button className="row between" style={{ width: '100%', background: 'none', border: 0, color: 'inherit', padding: 0, textAlign: 'left' }} onClick={() => setOpen(v => !v)}>
+      <div>
+        <h2 style={{ margin: 0 }}>{t('Scientific review')}</h2>
+        <div className="dim small">{t('{0} confidence · evidence library {1}', report.confidence || 'low', report.evidenceVersion || '')}</div>
+      </div>
+      <Icon name={open ? 'chevronDown' : 'chevronRight'} />
+    </button>
+    {open && <>
+      {(report.findings || []).map((f, i) => <div key={f.id || i} style={{ padding: '10px 0', borderTop: '1px solid var(--sep)' }}>
+        <div className="row" style={{ gap: 7, marginBottom: 4 }}>
+          <span className="tag acc">{t(f.category || 'finding')}</span>
+          <span className="dim" style={{ fontSize: '.7rem' }}>{t('{0} confidence', f.confidence || 'low')}</span>
+        </div>
+        <div className="muted small" style={{ lineHeight: 1.5 }}>{f.reading}</div>
+        {!!f.sourceIds?.length && <div className="dim" style={{ marginTop: 5, fontSize: '.7rem' }}>
+          {f.sourceIds.map((id, j) => { const s = source(id); return s ? <span key={id}>{j ? ' · ' : ''}<a href={s.url} target="_blank" rel="noreferrer">{s.organisation} {s.year}</a></span> : null })}
+        </div>}
+      </div>)}
+      {!!report.limitations?.length && <details style={{ marginTop: 4 }}>
+        <summary className="dim small">{t('Limits of this review')}</summary>
+        {report.limitations.map((x, i) => <div key={i} className="dim" style={{ fontSize: '.72rem', lineHeight: 1.45, marginTop: 6 }}>• {x}</div>)}
+      </details>}
+    </>}
   </div>
 }
 

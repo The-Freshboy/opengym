@@ -101,14 +101,14 @@ export default function Coach() {
         <StatusCard job={job} pending={pending} nav={nav} />
 
         {!job && !pending && <div className="card">
-          <h2 style={{ margin: '0 0 6px' }}>{t('Ask for a review')}</h2>
+          <h2 style={{ margin: '0 0 6px' }}>{t('Scientific training review')}</h2>
           <div className="muted small" style={{ marginBottom: 10 }}>
-            {t('The Coach reads what you have actually logged since its last look and suggests changes to your plan — each one with its reason.')}
+            {t('OpenGym analyses your synced plan and completed sessions, checks conservative research-backed signals, and suggests only changes you approve. No JSON export is needed.')}
           </div>
           <TextArea rows={2} value={note} maxLength={1000} onChange={e => setNote(e.target.value)}
             placeholder={t('Anything it should know? (optional) — e.g. “right shoulder pinches on overhead work”')} />
           <div style={{ height: 10 }} />
-          <Button variant="primary" icon="sparkles" disabled={busy} onClick={askReview}>{t('Ask for a review')}</Button>
+          <Button variant="primary" icon="sparkles" disabled={busy} onClick={askReview}>{t('Run scientific review')}</Button>
           {cap?.limit > 0 && <div className="dim small" style={{ marginTop: 8, textAlign: 'center' }}>
             {t('{0} of {1} Coach runs used today', cap.used, cap.limit)}
           </div>}
