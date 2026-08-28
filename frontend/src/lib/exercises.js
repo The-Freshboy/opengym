@@ -1,27 +1,10 @@
-import { EXDB as BUILTIN_EXDB } from './exercises-data.js'
+import { EXDB } from './exercises-data.js'
 import { t } from './i18n.js'
 
-export const EXDB = [...BUILTIN_EXDB]
+export { EXDB }
 export const EXIDX = {}
 EXDB.forEach(e => { EXIDX[e.id] = e })
 export const BODYPARTS = [...new Set(EXDB.map(e => e.bp))].sort()
-
-export function installExerciseCatalogue(list) {
-  if (!Array.isArray(list) || !list.length) return false
-  EXDB.splice(0, EXDB.length, ...list)
-  for (const key of Object.keys(EXIDX)) delete EXIDX[key]
-  EXDB.forEach(e => { EXIDX[e.id] = e })
-  BODYPARTS.splice(0, BODYPARTS.length, ...new Set(EXDB.map(e => e.bp)))
-  BODYPARTS.sort()
-  return true
-}
-
-export async function loadExerciseCatalogue() {
-  try {
-    const r = await fetch('/api/exercises', { cache: 'no-store' })
-    if (r.ok) installExerciseCatalogue((await r.json()).exercises)
-  } catch { /* offline/demo/mobile builds keep the bundled catalogue */ }
-}
 
 // Equipment options present in a given list of exercises, most common first (issue #6).
 // Deriving them from the *already filtered* list keeps the chip row short and means
