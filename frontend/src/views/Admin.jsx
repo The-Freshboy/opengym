@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useStore } from '../store/useStore.js'
 import { useUI } from '../store/useUI.js'
@@ -9,6 +9,8 @@ import { confirmSheet } from '../sheets.jsx'
 import Icon from '../components/Icon.jsx'
 import { Button } from '../components/ui.jsx'
 import AdminCoach from './AdminCoach.jsx'
+import { EXDB } from '../lib/exercises.js'
+import { parseExerciseImport } from '../lib/exercise-import.js'
 
 // Admin-only operator dashboard (owner passkey + admin flag; guarded again server-side).
 // Deliberately English-only — it isn't part of the translated end-user surface, so it stays
@@ -89,6 +91,83 @@ function InvitesCard({ invites, reload }) {
   </div>
 }
 
+function ExerciseDatabaseCard() {
+  const toast = useUI(s => s.toast)
+  const input = useRef(null)
+  const [status, setStatus] = useState(null)
+  const [preview, setPreview] = useState(null)
+  const [busy, setBusy] = useState(false)
+  const load = () => api('/api/admin/exercises').then(setStatus).catch(e => toast(e.message))
+  useEffect(() => { load() }, [])
+
+  const choose = async e => {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
+    if (file.size > 5 * 1024 * 1024) return toast('That file is larger than the 5 MB limit')
+    const result = parseExerciseImport(await file.text(), EXDB)
+    setPreview(result)
+    if (!result.ok) toast(result.errors[0])
+  }
+  const apply = () => {
+    if (!preview?.ok || busy) return
+    confirmSheet({
+      title: 'Apply exercise database?',
+      message: `${preview.exercises.length} exercises will become active. A backup of the current catalogue will be kept. Existing workouts and routines are not edited.`,
+      confirmText: 'Apply update',
+      onConfirm: async () => {
+        setBusy(true)
+        try {
+          await api('/api/admin/exercises/apply', { method: 'POST', body: JSON.stringify({ exercises: preview.exercises }) })
+          toast('Exercise database updated')
+          location.reload()
+        } catch (e) { toast(e.message) } finally { setBusy(false) }
+      }
+    })
+  }
+  const rollback = () => confirmSheet({
+    title: 'Restore previous exercise database?',
+    message: 'The current catalogue will be replaced by its automatic backup. User routines and workout history are not changed.',
+    confirmText: 'Restore backup',
+    onConfirm: async () => {
+      setBusy(true)
+      try {
+        await api('/api/admin/exercises/rollback', { method: 'POST', body: '{}' })
+        toast('Previous exercise database restored')
+        location.reload()
+      } catch (e) { toast(e.message) } finally { setBusy(false) }
+    }
+  })
+  const examples = (title, list, colour) => list.length ? <div style={{ marginTop: 8 }}>
+    <div className="small" style={{ color }}>{title} ({list.length})</div>
+    <div className="dim" style={{ fontSize: '.72rem', marginTop: 2 }}>{list.slice(0, 6).map(x => x.n || x.id).join(' · ')}{list.length > 6 ? ` · +${list.length - 6} more` : ''}</div>
+  </div> : null
+
+  return <div className="card">
+    <div className="row between"><div><h2 style={{ margin: 0 }}>Exercise database</h2>
+      <div className="small muted" style={{ marginTop: 5 }}>{status?.active ? `${status.count} uploaded exercises active` : `${EXDB.length} bundled exercises active`}</div></div>
+      <Button size="sm" onClick={() => input.current?.click()} icon="upload">Choose JSON</Button>
+    </div>
+    <input ref={input} type="file" accept="application/json,.json" hidden onChange={choose} />
+    <p className="small muted" style={{ margin: '10px 0' }}>Uploads are validated and compared with the active catalogue before anything changes.</p>
+    {preview && !preview.ok && <div style={{ color: 'var(--red)', fontSize: '.8rem' }}>{preview.errors.map((e, i) => <div key={i}>{e}</div>)}</div>}
+    {preview?.ok && <div style={{ padding: 12, background: 'var(--fill)', borderRadius: 12 }}>
+      <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>
+        <span className="tag acc">+{preview.added.length} added</span>
+        <span className="tag">{preview.changed.length} changed</span>
+        <span className="tag" style={{ color: preview.removed.length ? 'var(--red)' : undefined }}>−{preview.removed.length} removed</span>
+        <span className="tag">{preview.unchanged} unchanged</span>
+      </div>
+      {examples('Added', preview.added, 'var(--green)')}
+      {examples('Changed', preview.changed, 'var(--acc)')}
+      {examples('Removed', preview.removed, 'var(--red)')}
+      <Button variant="primary" style={{ marginTop: 12, width: '100%' }} disabled={busy} onClick={apply}>{busy ? 'Applying…' : 'Apply update'}</Button>
+    </div>}
+    {status?.backupAvailable && <button className="btn" disabled={busy} onClick={rollback} style={{ marginTop: 10 }}>Restore previous database</button>}
+    {status?.updatedAt && <div className="dim" style={{ fontSize: '.7rem', marginTop: 8 }}>Last updated {new Date(status.updatedAt).toLocaleString()}</div>}
+  </div>
+}
+
 export default function Admin() {
   const nav = useNavigate()
   const user = useStore(s => s.user)
@@ -134,6 +213,8 @@ export default function Admin() {
     </div>}
 
     <AdminCoach />
+
+    <ExerciseDatabaseCard />
 
     <InvitesCard invites={invites} reload={loadInvites} />
 

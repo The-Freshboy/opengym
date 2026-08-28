@@ -18,7 +18,26 @@ import { createRequire } from 'node:module';
 const DATA = process.env.DATA_DIR || '/data';
 const require_ = createRequire(import.meta.url);
 const LIBRARY = require_('./library.json').exercises;
-const LIB_BY_ID = new Map(LIBRARY.map(e => [e.id, e]));
+const BUNDLED_LIBRARY_STATE = { list: LIBRARY, byId: new Map(LIBRARY.map(e => [e.id, e])) };
+let overrideLibrary = { mtime: -1, state: null };
+
+// Admin catalogue uploads live in /data. Coach reads the same active ids, names and equipment
+// as the app, while the committed compact library remains the no-upload and failure fallback.
+function libraryState() {
+  const file = path.join(DATA, 'exercises.json');
+  try {
+    const mtime = fs.statSync(file).mtimeMs;
+    if (overrideLibrary.mtime === mtime && overrideLibrary.state) return overrideLibrary.state;
+    const raw = JSON.parse(fs.readFileSync(file, 'utf8'));
+    if (!Array.isArray(raw) || !raw.length) return BUNDLED_LIBRARY_STATE;
+    const list = raw.map(e => ({ id: String(e.id), n: String(e.n), bp: String(e.bp), eq: String(e.eq), tg: String(e.tg) }));
+    const byId = new Map(list.map(e => [e.id, e]));
+    if (byId.size !== list.length || list.some(e => !e.id || !e.n)) return BUNDLED_LIBRARY_STATE;
+    overrideLibrary = { mtime, state: { list, byId } };
+    return overrideLibrary.state;
+  } catch { return BUNDLED_LIBRARY_STATE; }
+}
+const libraryById = () => libraryState().byId;
 
 export const CONTRACT = 1;
 // Bounds from FR-22. A review reads a training block, not a training career: more history
@@ -55,7 +74,7 @@ const modeOf = (cfg, ex) => {
 };
 function readSession(entry, fallback) {
   const target = (entry && entry.target) || fallback || {};
-  const mode = modeOf(target, LIB_BY_ID.get(entry?.id));
+  const mode = modeOf(target, libraryById().get(entry?.id));
   const sets = (entry && entry.sets) || [];
   const planned = target.sets || sets.length;
   const enough = sets.length >= planned;
@@ -77,8 +96,8 @@ export function stallCount(sessions) {
 
 /* ---------- plan cleaning (mirrors plan-share.js cleanEx) ---------- */
 function cleanEx(e) {
-  const o = { id: e.id, name: LIB_BY_ID.get(e.id)?.n || null, sets: e.sets };
-  const mode = modeOf(e, LIB_BY_ID.get(e.id));
+  const o = { id: e.id, name: libraryById().get(e.id)?.n || null, sets: e.sets };
+  const mode = modeOf(e, libraryById().get(e.id));
   o.mode = mode;
   if (mode === 'cardio') { if (e.min != null) o.min = e.min; if (e.speed != null) o.speed = e.speed; }
   else if (mode === 'time') { if (e.sec != null) o.sec = e.sec; if (e.weight) o.weight = e.weight; }
@@ -100,7 +119,7 @@ function cleanEx(e) {
  */
 export function canonicalPlan(S) {
   const custom = new Map((S.customEx || []).map(c => [c.id, c]));
-  const exOf = id => LIB_BY_ID.get(id) || custom.get(id);
+  const exOf = id => libraryById().get(id) || custom.get(id);
   return {
     routines: (S.routines || []).map(r => ({
       id: r.id, name: r.name || '', prog: r.prog || '',
@@ -137,11 +156,12 @@ export function librarySlice(S, equipment) {
   // No equipment stated (or "everything") ⇒ the whole catalogue. Filtering to nothing would
   // leave the Coach unable to propose anything at all, which is a worse failure than a
   // slightly larger payload.
-  const base = wanted.length ? LIBRARY.filter(e => wanted.includes((e.eq || '').toLowerCase())) : LIBRARY;
-  return [...customs, ...(base.length ? base : LIBRARY)];
+  const active = libraryState().list;
+  const base = wanted.length ? active.filter(e => wanted.includes((e.eq || '').toLowerCase())) : active;
+  return [...customs, ...(base.length ? base : active)];
 }
-export const libraryHas = id => LIB_BY_ID.has(id);
-export const libraryName = id => LIB_BY_ID.get(id)?.n || null;
+export const libraryHas = id => libraryById().has(id);
+export const libraryName = id => libraryById().get(id)?.n || null;
 export { LIBRARY };
 
 /* ---------- effort scale (mirrors history.js effortOf) ---------- */
@@ -188,7 +208,7 @@ function aggregates(S, workouts) {
   const hit = {};
   workouts.forEach(w => (w.entries || []).forEach(en => {
     if (!en.sets?.some(s => s.done)) return;
-    const bp = LIB_BY_ID.get(en.id)?.bp;
+    const bp = libraryById().get(en.id)?.bp;
     if (bp) hit[bp] = (hit[bp] || 0) + en.sets.filter(s => s.done).length;
   }));
 

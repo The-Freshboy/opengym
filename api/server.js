@@ -13,6 +13,7 @@ import * as coachConfig from './coach/config.js';
 import * as coachJobs from './coach/jobs.js';
 import { coachRoutes } from './coach/routes.js';
 import { startCadence } from './coach/cadence.js';
+import { createExerciseStore } from './exercise-db.js';
 
 const PORT = +(process.env.PORT || 3000);
 const DATA = process.env.DATA_DIR || '/data';
@@ -117,6 +118,7 @@ function effectiveRoutineId(S, iso) {
   const wd = new Date(iso + 'T12:00:00').getDay();
   return firstValid(S.week?.[wd]) || null;
 }
+const exerciseStore = createExerciseStore(DATA, atomicWrite);
 // Computes "now" in an arbitrary IANA zone (e.g. "Europe/Lisbon") instead of the server's own —
 // each user's reminder fires by their own clock, wherever they and their phone actually are.
 function userNow(tz) {
@@ -275,6 +277,11 @@ const routes = {
   'GET /api/config': async (req, res) => {
     const coach = coachConfig.publicConfig();
     json(res, 200, { invite_only: INVITE_ONLY, ...(coach ? { coach } : {}) });
+  },
+
+  // The bundled catalogue remains the fallback. A validated admin upload in /data overrides it.
+  'GET /api/exercises': async (req, res) => {
+    json(res, 200, { exercises: exerciseStore.current(), ...exerciseStore.status() });
   },
 
   'GET /api/me': async (req, res) => {
@@ -475,6 +482,23 @@ const routes = {
   },
 
   /* ---------- admin dashboard ---------- */
+  'GET /api/admin/exercises': async (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    json(res, 200, exerciseStore.status());
+  },
+
+  'POST /api/admin/exercises/apply': async (req, res) => {
+    const admin = requireAdmin(req, res); if (!admin) return;
+    const result = exerciseStore.apply(await readBody(req), admin.id);
+    json(res, result.ok ? 200 : 400, result.ok ? result : { error: result.errors.join(' ') });
+  },
+
+  'POST /api/admin/exercises/rollback': async (req, res) => {
+    const admin = requireAdmin(req, res); if (!admin) return;
+    const result = exerciseStore.rollback(admin.id);
+    json(res, result.ok ? 200 : 400, result.ok ? result : { error: result.errors.join(' ') });
+  },
+
   // One row per user, cheap enough for a personal instance (reads each state file once).
   'GET /api/admin/users': async (req, res) => {
     if (!requireAdmin(req, res)) return;
