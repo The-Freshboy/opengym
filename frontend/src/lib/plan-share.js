@@ -124,8 +124,9 @@ export function mergePlan(s, bundle, { schedule } = {}) {
   })
   if (schedule) {
     WEEK_ORDER.forEach(d => { delete s.week[d] })
-    Object.entries(bundle.week || {}).forEach(([d, oldId]) => {
-      if (ridMap[oldId]) s.week[d] = ridMap[oldId]
+    Object.entries(bundle.week || {}).forEach(([d, oldValue]) => {
+      const ids = (Array.isArray(oldValue) ? oldValue : [oldValue]).map(id => ridMap[id]).filter(Boolean)
+      if (ids.length) s.week[d] = ids.length === 1 ? ids[0] : ids
     })
   }
   return { routines: bundle.routines.length }
@@ -181,8 +182,9 @@ function routineHTML(r, unit) {
 
 function weekHTML(S) {
   const rows = WEEK_ORDER.map(d => {
-    const r = S.routines.find(x => x.id === S.week?.[d])
-    const val = r ? esc(r.name) : `<span class="rest">${esc(t('Rest'))}</span>`
+    const ids = Array.isArray(S.week?.[d]) ? S.week[d] : [S.week?.[d]]
+    const routines = ids.map(id => S.routines.find(x => x.id === id)).filter(Boolean)
+    const val = routines.length ? routines.map(r => esc(r.name)).join(' + ') : `<span class="rest">${esc(t('Rest'))}</span>`
     return `<div class="w-row"><div class="w-day">${esc(t(DAYN[d]))}</div><div class="w-r">${val}</div></div>`
   }).join('')
   return `<div class="week">${rows}</div>`

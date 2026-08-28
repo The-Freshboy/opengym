@@ -112,9 +112,10 @@ function cancelRestTimer(userId) {
 function effectiveRoutineId(S, iso) {
   const ov = S.dayPlan?.[iso];
   if (ov === 'rest') return null;
-  if (ov && S.routines?.some(r => r.id === ov)) return ov;
+  const firstValid = value => (Array.isArray(value) ? value : [value]).find(id => id && S.routines?.some(r => r.id === id));
+  if (Object.prototype.hasOwnProperty.call(S.dayPlan || {}, iso)) return firstValid(ov) || null;
   const wd = new Date(iso + 'T12:00:00').getDay();
-  return S.week?.[wd] || null;
+  return firstValid(S.week?.[wd]) || null;
 }
 // Computes "now" in an arbitrary IANA zone (e.g. "Europe/Lisbon") instead of the server's own —
 // each user's reminder fires by their own clock, wherever they and their phone actually are.

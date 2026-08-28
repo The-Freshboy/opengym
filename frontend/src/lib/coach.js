@@ -319,7 +319,11 @@ const CHANGE_APPLY = {
     s.routines = s.routines.filter(r => r.id !== id)
     // A week pointing at a routine that no longer exists reads as a rest day anyway; clearing
     // it keeps the plan honest rather than merely harmless.
-    Object.keys(s.week || {}).forEach(d => { if (s.week[d] === id) delete s.week[d] })
+    Object.keys(s.week || {}).forEach(d => {
+      const next = (Array.isArray(s.week[d]) ? s.week[d] : [s.week[d]]).filter(x => x && x !== id)
+      if (next.length) s.week[d] = next
+      else delete s.week[d]
+    })
   },
   'rename-routine': (s, c) => { need(findRoutine(s, c.target.routineId)).name = c.after },
   week: (s, c) => {

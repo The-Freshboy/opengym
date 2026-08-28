@@ -119,16 +119,38 @@ export function bestWeightFor(S, exId) {
   }))
   return best
 }
-export function effectiveRoutineId(S, iso) {
-  const ov = S.dayPlan[iso]
-  if (ov === 'rest') return null
-  if (ov && S.routines.some(r => r.id === ov)) return ov
+// Schedule values used to be a single routine id. Arrays extend that format without a
+// migration: old profiles remain valid and are normalised only when a day is edited.
+export const routineIds = value => {
+  if (!value || value === 'rest') return []
+  return [...new Set((Array.isArray(value) ? value : [value]).filter(v => typeof v === 'string' && v))]
+}
+export function effectiveRoutineIds(S, iso) {
+  const valid = ids => routineIds(ids).filter(id => S.routines.some(r => r.id === id))
+  if (Object.prototype.hasOwnProperty.call(S.dayPlan || {}, iso)) return valid(S.dayPlan[iso])
   const wd = new Date(iso + 'T12:00:00').getDay()
-  return S.week[wd] || null
+  return valid(S.week?.[wd])
+}
+export function effectiveRoutineId(S, iso) {
+  return effectiveRoutineIds(S, iso)[0] || null
 }
 export function effectiveRoutine(S, iso) {
   const id = effectiveRoutineId(S, iso)
   return id ? S.routines.find(r => r.id === id) || null : null
+}
+
+export function setDayRoutineIds(S, iso, ids) {
+  const next = routineIds(ids).filter(id => S.routines.some(r => r.id === id))
+  S.dayPlan[iso] = next.length ? next : 'rest'
+}
+
+// Move one occurrence only. The source becomes a date override, while the recurring weekly
+// plan is untouched. Existing activities at both dates are retained.
+export function movePlannedRoutine(S, fromIso, toIso, routineId) {
+  if (fromIso === toIso || !effectiveRoutineIds(S, fromIso).includes(routineId)) return false
+  setDayRoutineIds(S, fromIso, effectiveRoutineIds(S, fromIso).filter(id => id !== routineId))
+  setDayRoutineIds(S, toIso, [...effectiveRoutineIds(S, toIso), routineId])
+  return true
 }
 export function buildSets(S, cfg) {
   const last = lastEntryFor(S, cfg.id)

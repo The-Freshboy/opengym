@@ -4,7 +4,7 @@ import { useStore } from '../store/useStore.js'
 import { exOr } from '../lib/exercises.js'
 import { uid } from '../lib/format.js'
 import { t } from '../lib/i18n.js'
-import { supersetUnits, cleanupSg, exLine } from '../lib/history.js'
+import { supersetUnits, cleanupSg, exLine, routineIds } from '../lib/history.js'
 import { Thumb } from '../components/Media.jsx'
 import { glyphPicker, exercisePicker, exConfigSheet, confirmSheet } from '../sheets.jsx'
 import Icon from '../components/Icon.jsx'
@@ -101,8 +101,15 @@ export default function RoutineEdit() {
       onConfirm: () => {
         update(s => {
           s.routines = s.routines.filter(x => x.id !== id)
-          Object.keys(s.week).forEach(k => { if (s.week[k] === id) delete s.week[k] })
-          Object.keys(s.dayPlan).forEach(k => { if (s.dayPlan[k] === id) delete s.dayPlan[k] })
+          Object.keys(s.week).forEach(k => {
+            const next = routineIds(s.week[k]).filter(x => x !== id)
+            if (next.length) s.week[k] = next
+            else delete s.week[k]
+          })
+          Object.keys(s.dayPlan).forEach(k => {
+            const next = routineIds(s.dayPlan[k]).filter(x => x !== id)
+            s.dayPlan[k] = next.length ? next : 'rest'
+          })
         })
         nav('/plan')
       }

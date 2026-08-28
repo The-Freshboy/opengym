@@ -45,11 +45,12 @@ export async function syncReminder(S, interactive = false) {
     if (perm.display !== 'granted') return false
     const [hour, minute] = (r.time || '08:00').split(':').map(Number)
     const notifications = Object.entries(S.week || {})
-      .filter(([, rid]) => rid && (S.routines || []).some(x => x.id === rid))
-      .map(([day, rid]) => ({
+      .map(([day, value]) => [day, [...new Set((Array.isArray(value) ? value : [value]).filter(Boolean))]])
+      .filter(([, ids]) => ids.some(id => (S.routines || []).some(x => x.id === id)))
+      .map(([day, ids]) => ({
         id: 100 + Number(day),
         title: t('Workout day'),
-        body: t('{0} is on the plan today — let’s go!', S.routines.find(x => x.id === rid).name),
+        body: t('{0} is on the plan today — let’s go!', ids.map(id => S.routines.find(x => x.id === id)?.name).filter(Boolean).join(' + ')),
         // Capacitor weekdays are 1 (Sunday) … 7 (Saturday); S.week uses getDay() 0…6.
         schedule: { on: { weekday: Number(day) + 1, hour, minute }, allowWhileIdle: true },
       }))

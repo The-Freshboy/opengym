@@ -2,8 +2,8 @@ import { useEffect, useRef, useState } from 'react'
 import { useStore } from './store/useStore.js'
 import { useUI } from './store/useUI.js'
 import { EXDB, EXIDX, BODYPARTS, isCardio, allExercises, equipmentOf, exOr } from './lib/exercises.js'
-import { fmtDate, fmtNum, fmtVol, fmtDur, durPart, todayISO, uid, exCount, DAYN, MONTHS_LONG, ACCENTS } from './lib/format.js'
-import { lastEntryFor, bestWeightFor, buildSets, effectiveRoutineId, workoutVolume, setsDone, setsDoneActive, lastBW, supersetUnits, unitOf, setLabel, defaultConfig, cleanupSg, modeOf, effortOf, exLine } from './lib/history.js'
+import { fmtDate, fmtNum, fmtVol, fmtDur, durPart, todayISO, isoOf, uid, exCount, DAYN, MONTHS_LONG, ACCENTS } from './lib/format.js'
+import { lastEntryFor, bestWeightFor, buildSets, effectiveRoutineIds, movePlannedRoutine, routineIds, setDayRoutineIds, workoutVolume, setsDone, setsDoneActive, lastBW, supersetUnits, unitOf, setLabel, defaultConfig, cleanupSg, modeOf, effortOf, exLine } from './lib/history.js'
 import { beep, vibrate } from './lib/sound.js'
 import { t, instrFor, getLang, INSTR_LANGS } from './lib/i18n.js'
 import { nav } from './lib/nav.js'
@@ -654,42 +654,63 @@ function PlanImport({ bundle, close }) {
 /* ============================ day override / assign ============================ */
 function DayOverride({ iso, close }) {
   const st = useStore(s => s.S)
+  const [searching, setSearching] = useState(false)
+  const [query, setQuery] = useState('')
   const wd = new Date(iso + 'T12:00:00').getDay()
-  const weeklyR = st.routines.find(r => r.id === st.week[wd])
+  const weeklyR = routineIds(st.week[wd]).map(id => st.routines.find(r => r.id === id)).filter(Boolean)
   const hasOvr = st.dayPlan[iso] !== undefined
-  const effId = effectiveRoutineId(st, iso)
+  const effIds = effectiveRoutineIds(st, iso)
   const set = v => {
-    update(s => { if (!v) delete s.dayPlan[iso]; else s.dayPlan[iso] = v })
+    update(s => { if (v === '') delete s.dayPlan[iso]; else setDayRoutineIds(s, iso, v === 'rest' ? [] : v) })
     close()
-    toast(v === '' ? t('Back to weekly plan') : v === 'rest' ? t('{0} set to rest', fmtDate(iso)) : t('{0} planned for {1}', (st.routines.find(r => r.id === v) || {}).name, fmtDate(iso)))
+    toast(v === '' ? t('Back to weekly plan') : v === 'rest' ? t('{0} set to rest', fmtDate(iso)) : t('Plan updated for {0}', fmtDate(iso)))
   }
+  const toggle = id => update(s => setDayRoutineIds(s, iso, effIds.includes(id) ? effIds.filter(x => x !== id) : [...effIds, id]))
+  const routines = st.routines.filter(r => r.name.toLowerCase().includes(query.trim().toLowerCase()))
   return <>
     <h3>{fmtDate(iso, true)}</h3>
-    <div className="muted small" style={{ marginBottom: 12 }}>{t('Weekly plan:')} {weeklyR ? weeklyR.name : t('Rest')}{hasOvr && <span style={{ color: 'var(--orange)' }}> · {t('changed for this day')}</span>}<br />{t('Sick, missed a day or want a different session? Pick what to train instead.')}</div>
+    <div className="muted small" style={{ marginBottom: 12 }}>{t('Weekly plan:')} {weeklyR.length ? weeklyR.map(r => r.name).join(' + ') : t('Rest')}{hasOvr && <span style={{ color: 'var(--orange)' }}> · {t('changed for this day')}</span>}<br />{t('Choose one or more activities for this day.')}</div>
+    <Button variant="tinted" icon="magnifier" onClick={() => setSearching(v => !v)}>{t('Search routines')}</Button>
+    {searching && <input autoFocus type="search" value={query} onChange={e => setQuery(e.target.value)} placeholder={t('Search routines')} aria-label={t('Search routines')} style={{ width: '100%', margin: '8px 0 4px' }} />}
+    <div style={{ height: 8 }} />
     <div className="list">
-      {st.routines.map(r => <div key={r.id} className="item" onClick={() => set(r.id)}>
+      {routines.map(r => <div key={r.id} className="item" onClick={() => toggle(r.id)}>
         <span className="lrow-i"><Icon name={glyphOf(r.emoji)} /></span>
         <div className="grow"><div className="tt">{r.name}</div><div className="ss">{exCount(r.ex.length)}</div></div>
-        {effId === r.id && <Icon name="check" className="accent" />}</div>)}
-      <div className="item" onClick={() => set('rest')}><span className="lrow-i" style={{ background: 'var(--surface-3)' }}><Icon name="moon" /></span><div className="grow"><div className="tt">{t('Rest / skip this day')}</div></div>{effId === null && <Icon name="check" className="accent" />}</div>
+        {effIds.includes(r.id) && <Icon name="check" className="accent" />}</div>)}
+      <div className="item" onClick={() => set('rest')}><span className="lrow-i" style={{ background: 'var(--surface-3)' }}><Icon name="moon" /></span><div className="grow"><div className="tt">{t('Rest / skip this day')}</div></div>{effIds.length === 0 && <Icon name="check" className="accent" />}</div>
       {hasOvr && <div className="item" onClick={() => set('')}><span className="lrow-i" style={{ background: 'var(--surface-3)' }}><Icon name="reset" /></span><div className="grow"><div className="tt">{t('Back to weekly plan')}</div></div></div>}
     </div>
+    <div style={{ height: 12 }} /><Button variant="primary" onClick={close}>{t('Done')}</Button>
   </>
 }
 export const dayOverrideSheet = iso => ui().openSheet(close => <DayOverride iso={iso} close={close} />)
 
 function DayAssign({ day, close }) {
   const st = useStore(s => s.S)
-  const set = v => { update(s => { if (v) s.week[day] = v; else delete s.week[day] }); close() }
+  const [searching, setSearching] = useState(false)
+  const [query, setQuery] = useState('')
+  const selected = routineIds(st.week[day])
+  const toggle = id => update(s => {
+    const ids = routineIds(s.week[day])
+    const next = ids.includes(id) ? ids.filter(x => x !== id) : [...ids, id]
+    if (next.length) s.week[day] = next
+    else delete s.week[day]
+  })
+  const routines = st.routines.filter(r => r.name.toLowerCase().includes(query.trim().toLowerCase()))
   return <>
     <h3>{t(DAYN[day])}</h3>
+    <Button variant="tinted" icon="magnifier" onClick={() => setSearching(v => !v)}>{t('Search routines')}</Button>
+    {searching && <input autoFocus type="search" value={query} onChange={e => setQuery(e.target.value)} placeholder={t('Search routines')} aria-label={t('Search routines')} style={{ width: '100%', margin: '8px 0' }} />}
+    <div style={{ height: 8 }} />
     <div className="list">
-      <div className="item" onClick={() => set('')}><span className="lrow-i" style={{ background: 'var(--surface-3)' }}><Icon name="moon" /></span><div className="grow"><div className="tt">{t('Rest day')}</div></div>{!st.week[day] && <Icon name="check" className="accent" />}</div>
-      {st.routines.map(r => <div key={r.id} className="item" onClick={() => set(r.id)}>
+      <div className="item" onClick={() => update(s => { delete s.week[day] })}><span className="lrow-i" style={{ background: 'var(--surface-3)' }}><Icon name="moon" /></span><div className="grow"><div className="tt">{t('Rest day')}</div></div>{selected.length === 0 && <Icon name="check" className="accent" />}</div>
+      {routines.map(r => <div key={r.id} className="item" onClick={() => toggle(r.id)}>
         <span className="lrow-i"><Icon name={glyphOf(r.emoji)} /></span>
         <div className="grow"><div className="tt">{r.name}</div><div className="ss">{exCount(r.ex.length)}</div></div>
-        {st.week[day] === r.id && <Icon name="check" className="accent" />}</div>)}
+        {selected.includes(r.id) && <Icon name="check" className="accent" />}</div>)}
     </div>
+    <div style={{ height: 12 }} /><Button variant="primary" onClick={close}>{t('Done')}</Button>
   </>
 }
 export const dayAssignSheet = day => ui().openSheet(close => <DayAssign day={day} close={close} />)
@@ -729,6 +750,46 @@ function ScheduledDayActions({ day, routineId, close }) {
 
 export const scheduledDayActionsSheet = (day, routineId) =>
   ui().openSheet(close => <ScheduledDayActions day={day} routineId={routineId} close={close} />)
+
+function MovePlanned({ iso, routineId, close }) {
+  const st = useStore(s => s.S)
+  const update = useStore(s => s.update)
+  const r = st.routines.find(x => x.id === routineId)
+  const [to, setTo] = useState(() => iso < todayISO() ? todayISO() : iso)
+  if (!r) return null
+  const move = () => {
+    if (!to || to === iso) return
+    update(s => { movePlannedRoutine(s, iso, to, routineId) })
+    close(); toast(t('{0} moved to {1}', r.name, fmtDate(to)))
+  }
+  const quickDate = days => { const d = new Date(); d.setDate(d.getDate() + days); setTo(isoOf(d)) }
+  return <><h3>{t('Move / reschedule')}</h3><div className="muted small" style={{ marginBottom: 14 }}>{r.name} · {fmtDate(iso, true)}</div>
+    <label className="small muted" htmlFor="move-workout-date">{t('New date')}</label>
+    <input id="move-workout-date" type="date" value={to} min={todayISO()} onChange={e => setTo(e.target.value)} style={{ width: '100%', margin: '7px 0 16px' }} />
+    <div className="row" style={{ gap: 8, marginBottom: 14 }}><Button size="sm" variant="tinted" onClick={() => quickDate(0)}>{t('Today')}</Button><Button size="sm" variant="tinted" onClick={() => quickDate(1)}>{t('Tomorrow')}</Button><Button size="sm" variant="tinted" onClick={() => quickDate(7)}>{t('Next week')}</Button></div>
+    <Button variant="primary" icon="calendar" onClick={move} disabled={!to || to === iso}>{t('Move session')}</Button></>
+}
+
+export const movePlannedSheet = (iso, routineId) =>
+  ui().openSheet(close => <MovePlanned iso={iso} routineId={routineId} close={close} />)
+
+function PlannedDay({ iso, close }) {
+  const st = useStore(s => s.S)
+  const ids = effectiveRoutineIds(st, iso)
+  return <><h3>{fmtDate(iso, true)}</h3>
+    <div className="muted small" style={{ marginBottom: 12 }}>{t(ids.length === 1 ? '{0} planned activity' : '{0} planned activities', ids.length)}</div>
+    <div className="list">{ids.map(id => {
+      const r = st.routines.find(x => x.id === id)
+      return r && <div className="item" key={id} onClick={() => { close(); routinePreviewSheet(id) }}>
+        <span className="lrow-i"><Icon name={glyphOf(r.emoji)} /></span><div className="grow"><div className="tt">{r.name}</div><div className="ss">{exCount(r.ex.length)}</div></div>
+        <button className="iconbtn" aria-label={t('Start {0}', r.name)} onClick={e => { e.stopPropagation(); close(); startFlow(id) }}><Icon name="play" /></button>
+        <button className="iconbtn" aria-label={t('Move / reschedule')} onClick={e => { e.stopPropagation(); close(); movePlannedSheet(iso, id) }}><Icon name="calendar" /></button>
+      </div>
+    })}</div>
+    <div style={{ height: 12 }} /><Button variant="tinted" icon="plus" onClick={() => { close(); dayOverrideSheet(iso) }}>{t('Add or remove activities')}</Button>
+  </>
+}
+export const plannedDaySheet = iso => ui().openSheet(close => <PlannedDay iso={iso} close={close} />)
 
 /* ============================ workout detail ============================ */
 function WorkoutDetail({ w, close }) {
@@ -773,10 +834,10 @@ function Calendar({ start, close }) {
   for (let i = 0; i < startOffset; i++) cells.push(<div key={'e' + i} />)
   for (let d = 1; d <= daysIn; d++) {
     const iso = y + '-' + String(mo + 1).padStart(2, '0') + '-' + String(d).padStart(2, '0')
-    const ws = byDay[iso], effId = effectiveRoutineId(st, iso), ovr = st.dayPlan[iso] !== undefined
-    const dotCls = ws ? 'done' : ovr && effId ? 'ovr' : effId ? 'plan' : ''
+    const ws = byDay[iso], effIds = effectiveRoutineIds(st, iso), ovr = st.dayPlan[iso] !== undefined
+    const dotCls = ws ? 'done' : ovr && effIds.length ? 'ovr' : effIds.length ? 'plan' : ''
     cells.push(<button key={d} className={'cal-d' + (ws ? ' has' : '') + (iso === todayISO() ? ' today' : '')} onClick={() => {
-      if (!ws) { close(); dayOverrideSheet(iso); return }
+      if (!ws) { close(); effIds.length ? plannedDaySheet(iso) : dayOverrideSheet(iso); return }
       if (ws.length === 1) { close(); workoutDetailSheet(ws[0]); return }
       close(); ui().openSheet(c2 => <><h3>{fmtDate(iso, true)}</h3><div className="list">{ws.map(w => <WorkoutRow key={w.id} w={w} onClick={() => { c2(); workoutDetailSheet(w) }} />)}</div></>)
     }}><span>{d}</span><i className={dotCls} /></button>)
