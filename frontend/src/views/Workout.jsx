@@ -11,7 +11,7 @@ import { api } from '../lib/api.js'
 import Media from '../components/Media.jsx'
 import { startFlow, exercisePicker, exConfigSheet, exerciseDetailSheet, topWeightSheet, finishWorkout, workoutCompleteSheet, confirmSheet } from '../sheets.jsx'
 import Icon from '../components/Icon.jsx'
-import { Button, Check, NumberField } from '../components/ui.jsx'
+import { Button, Check, NumberField, TextArea } from '../components/ui.jsx'
 import { nextPrescription, applyPrescription } from '../lib/progression.js'
 import { glyphOf } from '../lib/glyphs.js'
 
@@ -268,6 +268,7 @@ function ActiveWorkout() {
       ) : (
         <ExerciseBlock entryIdx={cur} editing={editing} onToggle={i => toggle(cur, i)} onField={(i, f, v) => setField(cur, i, f, v)} onAddSet={() => addSet(cur)} onRemoveSet={() => removeSet(cur)} onStartTimed={i => startTimed(cur, i)} />
       )}
+      <div style={{ height: 10 }} /><TextArea rows={2} maxLength={500} value={A.entries[cur]?.note || ''} onChange={e => update(s => { const en = s.active.entries[cur]; if (en) en.note = e.target.value })} placeholder={t('Exercise note (optional)')} />
     </> : <div className="empty"><div className="ico"><Icon name="shuffle" /></div>{t('Freestyle workout — add your first exercise.')}</div>}
 
     <div style={{ height: 12 }} />
@@ -289,6 +290,7 @@ function ActiveWorkout() {
         const e = A.entries[cur]
         confirmSheet({ title: t('Remove {0}?', exOr(e.id).n), message: t('The sets logged for this exercise will be removed.'), confirmText: t('Remove'), danger: true, onConfirm: () => removeExercise(cur) })
       }}>{t('Remove exercise')}</Button></div></>}
+    <div style={{ height: 10 }} /><TextArea rows={3} maxLength={1000} value={A.note || ''} onChange={e => update(s => { s.active.note = e.target.value })} placeholder={t('Workout notes (optional)')} />
     <div style={{ height: 10 }} />
     {(() => {
       const exDone = A.entries.filter(e => e.sets.length && e.sets.every(s => s.done)).length

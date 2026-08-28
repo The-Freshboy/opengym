@@ -15,6 +15,7 @@ import { Button, Slider, Switch, Segmented, SelectRow, TextArea } from './compon
 import { glyphOf, GLYPH_GROUPS, DEFAULT_GLYPH } from './lib/glyphs.js'
 import BodyMap from './components/BodyMap.jsx'
 import { loadOfWorkouts } from './lib/muscles.js'
+import { ACTIVITY_TYPES, makeActivity, missedSessions, moveWeeklyRoutine, shiftRemainingWeek } from './lib/activities.js'
 import { parseImport, mergeImport } from './lib/import-csv.js'
 import { buildPlanBundle, parsePlan, mergePlan, printPlan } from './lib/plan-share.js'
 import { estimate1RM, best1RM, is1RMRecord, REP_CAP } from './lib/onerm.js'
@@ -745,11 +746,22 @@ function ScheduledDayActions({ day, routineId, close }) {
     <Button variant="primary" icon="list" onClick={() => { close(); routinePreviewSheet(r.id) }}>{t('View exercises')}</Button>
     <div style={{ height: 8 }} />
     <Button variant="tinted" icon="calendar" onClick={() => { close(); dayAssignSheet(day) }}>{t('Change routine')}</Button>
+    <div style={{ height: 8 }} />
+    <Button variant="tinted" icon="shuffle" onClick={() => { close(); weeklyMoveSheet(day, r.id) }}>{t('Move to another day')}</Button>
   </>
 }
 
 export const scheduledDayActionsSheet = (day, routineId) =>
   ui().openSheet(close => <ScheduledDayActions day={day} routineId={routineId} close={close} />)
+
+function WeeklyMove({ fromDay, routineId, close }) {
+  const st = useStore(s => s.S); const update = useStore(s => s.update); const [query, setQuery] = useState('')
+  const r = st.routines.find(x => x.id === routineId); if (!r) return null
+  const days = [1, 2, 3, 4, 5, 6, 0].filter(d => d !== fromDay && t(DAYN[d]).toLowerCase().includes(query.toLowerCase()))
+  return <><h3>{t('Move {0}', r.name)}</h3><input autoFocus type="search" className="field" value={query} onChange={e => setQuery(e.target.value)} placeholder={t('Search days')} style={{ margin: '8px 0' }} />
+    <div className="list">{days.map(d => <div className="item" key={d} onClick={() => { update(s => moveWeeklyRoutine(s, fromDay, d, routineId)); close(); toast(t('{0} moved to {1}', r.name, t(DAYN[d]))) }}><div className="grow"><div className="tt">{t(DAYN[d])}</div></div><Icon name="chevronRight" /></div>)}</div></>
+}
+export const weeklyMoveSheet = (fromDay, routineId) => ui().openSheet(close => <WeeklyMove fromDay={fromDay} routineId={routineId} close={close} />)
 
 function MovePlanned({ iso, routineId, close }) {
   const st = useStore(s => s.S)
@@ -791,6 +803,63 @@ function PlannedDay({ iso, close }) {
 }
 export const plannedDaySheet = iso => ui().openSheet(close => <PlannedDay iso={iso} close={close} />)
 
+/* ============================ flexible activities / recovery ============================ */
+function ActivityLog({ existing, close }) {
+  const update = useStore(s => s.update)
+  const [v, setV] = useState(() => ({
+    d: existing?.d || todayISO(), type: existing?.activityType || 'Climbing', name: existing?.name || '',
+    durationMin: existing?.durationMin || (existing?.end > existing?.start ? Math.max(1, Math.round((existing.end - existing.start) / 60000)) : 60),
+    intensity: existing?.intensity || 5, location: existing?.location || '', grade: existing?.grade || '',
+    distance: existing?.distance || '', note: existing?.note || ''
+  }))
+  const set = x => setV(s => ({ ...s, ...x }))
+  const save = () => {
+    const rec = makeActivity(v)
+    update(s => {
+      if (existing) { const i = s.workouts.findIndex(w => w.id === existing.id); if (i >= 0) s.workouts[i] = { ...rec, id: existing.id } }
+      else s.workouts.push(rec)
+    })
+    close(); toast(t(existing ? 'Activity updated' : 'Activity logged'))
+  }
+  return <><h3>{t(existing ? 'Edit activity' : 'Log an activity')}</h3>
+    <div className="row" style={{ gap: 8 }}><select className="field" value={v.type} onChange={e => set({ type: e.target.value })}>{ACTIVITY_TYPES.map(x => <option key={x}>{t(x)}</option>)}</select><input className="field" type="date" value={v.d} onChange={e => set({ d: e.target.value })} /></div>
+    <div style={{ height: 8 }} /><input className="field" value={v.name} onChange={e => set({ name: e.target.value })} placeholder={t('Name (optional)')} />
+    <div style={{ height: 12 }} /><Stepper label={t('Duration (min)')} value={v.durationMin} step={5} decimal={false} onChange={durationMin => set({ durationMin })} />
+    <div style={{ height: 12 }} /><div className="small muted">{t('Intensity')} · {v.intensity}/10</div><Slider value={v.intensity} min={1} max={10} onChange={intensity => set({ intensity })} />
+    <div style={{ height: 12 }} /><input className="field" value={v.location} onChange={e => set({ location: e.target.value })} placeholder={t('Location (optional)')} />
+    <div style={{ height: 8 }} /><div className="row" style={{ gap: 8 }}><input className="field" value={v.grade} onChange={e => set({ grade: e.target.value })} placeholder={t('Grade / difficulty')} /><input className="field" inputMode="decimal" value={v.distance} onChange={e => set({ distance: e.target.value })} placeholder={t('Distance (km)')} /></div>
+    <div style={{ height: 8 }} /><TextArea rows={3} maxLength={1000} value={v.note} onChange={e => set({ note: e.target.value })} placeholder={t('Notes (optional)')} />
+    <div style={{ height: 14 }} /><Button variant="primary" onClick={save}>{t(existing ? 'Save changes' : 'Log activity')}</Button>
+  </>
+}
+export const activityLogSheet = existing => ui().openSheet(close => <ActivityLog existing={existing} close={close} />)
+
+function Readiness({ close }) {
+  const st = useStore(s => s.S); const update = useStore(s => s.update); const iso = todayISO()
+  const [v, setV] = useState(() => ({ sleep: 3, energy: 3, soreness: 3, pain: false, note: '', ...(st.readiness?.[iso] || {}) }))
+  const set = x => setV(s => ({ ...s, ...x }))
+  const scale = (key, label) => <div style={{ marginBottom: 12 }}><div className="small muted">{t(label)} · {v[key]}/5</div><Slider value={v[key]} min={1} max={5} onChange={n => set({ [key]: n })} /></div>
+  return <><h3>{t('Daily readiness')}</h3><div className="muted small" style={{ marginBottom: 14 }}>{t('Optional — use this to explain performance, not to stop you training.')}</div>
+    {scale('sleep', 'Sleep')}{scale('energy', 'Energy')}{scale('soreness', 'Soreness')}
+    <div className="row between" style={{ marginBottom: 12 }}><div><div className="tt">{t('Pain or injury concern')}</div><div className="small dim">{t('Separate from normal training soreness')}</div></div><Switch checked={v.pain} onChange={pain => set({ pain })} /></div>
+    <TextArea rows={2} maxLength={500} value={v.note} onChange={e => set({ note: e.target.value })} placeholder={t('Optional note')} />
+    <div style={{ height: 14 }} /><Button variant="primary" onClick={() => { update(s => { s.readiness ||= {}; s.readiness[iso] = v }); close(); toast(t('Readiness saved')) }}>{t('Save')}</Button>
+  </>
+}
+export const readinessSheet = () => ui().openSheet(close => <Readiness close={close} />)
+
+function MissedSessions({ close }) {
+  const st = useStore(s => s.S); const update = useStore(s => s.update)
+  const missed = missedSessions(st, todayISO())
+  const skip = x => update(s => setDayRoutineIds(s, x.iso, effectiveRoutineIds(s, x.iso).filter(id => id !== x.routineId)))
+  return <><h3>{t('Missed sessions')}</h3>{missed.length ? <div className="list">{missed.map(x => {
+    const r = st.routines.find(v => v.id === x.routineId); if (!r) return null
+    return <div className="card" key={x.iso + x.routineId} style={{ marginBottom: 8 }}><div className="row between"><div><div className="tt">{r.name}</div><div className="ss">{fmtDate(x.iso, true)}</div></div><Icon name="calendar" /></div>
+      <div className="row" style={{ gap: 6, marginTop: 10 }}><Button size="sm" onClick={() => { close(); movePlannedSheet(x.iso, x.routineId) }}>{t('Move')}</Button><Button size="sm" onClick={() => { skip(x); toast(t('Session skipped')) }}>{t('Skip')}</Button><Button size="sm" onClick={() => { update(s => shiftRemainingWeek(s, x.iso)); close(); toast(t('Remaining week shifted')) }}>{t('Shift week')}</Button></div></div>
+  })}</div> : <div className="empty"><div className="ico"><Icon name="checkCircle" /></div>{t('No missed sessions.')}</div>}</>
+}
+export const missedSessionsSheet = () => ui().openSheet(close => <MissedSessions close={close} />)
+
 /* ============================ workout detail ============================ */
 function WorkoutDetail({ w, close }) {
   const st = useStore(s => s.S)
@@ -798,14 +867,17 @@ function WorkoutDetail({ w, close }) {
   return <>
     <h3>{w.name}</h3>
     <div className="muted small" style={{ marginBottom: 12 }}>{[fmtDate(w.d, true), ...durPart(w.end - w.start), fmtVol(w.vol, st.unit), ...(w.bw ? [fmtNum(w.bw) + ' ' + st.unit] : [])].join(' · ')}</div>
+    {w.kind === 'activity' && <><div className="row" style={{ gap: 6, flexWrap: 'wrap', marginBottom: 12 }}><span className="tag acc">{t(w.activityType)}</span><span className="tag">{t('Intensity')} {w.intensity}/10</span>{w.location && <span className="tag">{w.location}</span>}{w.grade && <span className="tag">{w.grade}</span>}{w.distance && <span className="tag">{w.distance} km</span>}</div>{w.note && <div className="card small" style={{ whiteSpace: 'pre-wrap' }}>{w.note}</div>}<Button variant="primary" icon="pencil" onClick={() => { close(); activityLogSheet(w) }}>{t('Edit activity')}</Button><div style={{ height: 8 }} /><Button variant="danger" onClick={() => confirmSheet({ title: t('Delete activity?'), message: t('This removes it from your history for good.'), confirmText: t('Delete'), danger: true, onConfirm: () => { update(s => { s.workouts = s.workouts.filter(x => x.id !== w.id) }); close() } })}>{t('Delete activity')}</Button></>}
+    {w.kind !== 'activity' && <>
     {w.entries.map((e, i) => {
       const ex = EXIDX[e.id]
       return <div key={i} className="row" style={{ marginBottom: 12, alignItems: 'flex-start' }}>
         {ex && <Thumb ex={ex} />}
         <div className="grow"><div className="tt capitalize" style={{ fontWeight: 600 }}>{ex ? ex.n : (e.n || e.id)} {w.prs && w.prs.includes(e.id) && <span className="pr"><Icon name="trophy" />PR</span>}</div>
-          <div className="ss">{e.sets.filter(s => s.done).map(s => setLabel(e.id, s, e.target)).join('  ·  ') || t('no sets')}</div></div>
+          <div className="ss">{e.sets.filter(s => s.done).map(s => setLabel(e.id, s, e.target)).join('  ·  ') || t('no sets')}</div>{e.note && <div className="small muted" style={{ marginTop: 4 }}>{e.note}</div>}</div>
       </div>
     })}
+    {w.note && <div className="card small" style={{ whiteSpace: 'pre-wrap' }}>{w.note}</div>}
     <Button variant="primary" icon="pencil" onClick={() => {
       useUI.getState().stopWork()
       useUI.getState().stopRest()
@@ -813,7 +885,7 @@ function WorkoutDetail({ w, close }) {
       close(); nav('/workout')
     }}>{t('Edit workout')}</Button>
     <div style={{ height: 8 }} />
-    <Button variant="danger" onClick={() => confirmSheet({ title: t('Delete workout?'), message: t('This removes it from your history for good.'), confirmText: t('Delete'), danger: true, onConfirm: () => { update(s => { const next = removeCompletedWorkout(s.workouts, s.exWeights, w.id); s.workouts = next.workouts; s.exWeights = next.exWeights }); close(); toast(t('Workout deleted')) } })}>{t('Delete workout')}</Button>
+    <Button variant="danger" onClick={() => confirmSheet({ title: t('Delete workout?'), message: t('This removes it from your history for good.'), confirmText: t('Delete'), danger: true, onConfirm: () => { update(s => { const next = removeCompletedWorkout(s.workouts, s.exWeights, w.id); s.workouts = next.workouts; s.exWeights = next.exWeights }); close(); toast(t('Workout deleted')) } })}>{t('Delete workout')}</Button></>}
   </>
 }
 export const workoutDetailSheet = w => ui().openSheet(close => <WorkoutDetail w={w} close={close} />)
@@ -848,6 +920,7 @@ function Calendar({ start, close }) {
       <h3 style={{ margin: 0 }}>{t(MONTHS_LONG[mo])} {y}</h3>
       <button className="iconbtn" onClick={() => setCur(new Date(y, mo + 1, 1))} aria-label="Next month"><Icon name="chevronRight" /></button>
     </div>
+    <div style={{ display: 'flex', justifyContent: 'center', margin: '8px 0' }}><Button size="sm" variant="tinted" icon="list" onClick={() => { close(); agendaSheet() }}>{t('Agenda view')}</Button></div>
     <div className="small muted" style={{ textAlign: 'center' }}>{monthWs.length ? `${t(monthWs.length === 1 ? '{0} workout' : '{0} workouts', monthWs.length)} · ${fmtDur(monthMs)} · ${fmtVol(monthVol, st.unit)}` : t('No workouts this month')}</div>
     <div className="cal-grid">{['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su'].map(l => <div key={l} className="cal-h">{t(l)}</div>)}{cells}</div>
     <div className="cal-legend">
@@ -860,14 +933,33 @@ function Calendar({ start, close }) {
 }
 export const calendarSheet = start => ui().openSheet(close => <Calendar start={start} close={close} />)
 
+function Agenda({ close }) {
+  const st = useStore(s => s.S)
+  const dates = []
+  const start = new Date(); start.setDate(start.getDate() - 7)
+  for (let i = 0; i < 29; i++) { const d = new Date(start); d.setDate(start.getDate() + i); dates.push(isoOf(d)) }
+  return <><div className="row between"><h3>{t('Agenda')}</h3><Button size="sm" icon="calendar" onClick={() => { close(); calendarSheet() }}>{t('Month')}</Button></div>
+    <div className="list">{dates.map(iso => {
+      const done = st.workouts.filter(w => w.d === iso)
+      const completedRoutineIds = new Set(done.map(w => w.routineId).filter(Boolean))
+      const planned = effectiveRoutineIds(st, iso).filter(id => !completedRoutineIds.has(id)).map(id => st.routines.find(r => r.id === id)).filter(Boolean)
+      if (!done.length && !planned.length) return null
+      return <div key={iso} style={{ marginBottom: 14 }}><div className="small muted" style={{ margin: '0 4px 5px' }}>{fmtDate(iso, true)}</div>
+        {done.map(w => <WorkoutRow key={w.id} w={w} onClick={() => { close(); workoutDetailSheet(w) }} />)}
+        {planned.map(r => <div key={r.id} className="item" onClick={() => { close(); plannedDaySheet(iso) }}><span className="lrow-i"><Icon name={glyphOf(r.emoji)} /></span><div className="grow"><div className="tt">{r.name}</div><div className="ss">{t('Planned')}</div></div><Icon name="chevronRight" className="chev" /></div>)}
+      </div>
+    })}</div></>
+}
+export const agendaSheet = () => ui().openSheet(close => <Agenda close={close} />)
+
 /* shared small workout row (used in lists) */
 export function WorkoutRow({ w, onClick }) {
   const st = useStore(s => s.S)
-  const glyph = glyphOf((st.routines.find(r => r.id === w.routineId) || {}).emoji)
+  const glyph = w.kind === 'activity' ? 'figureRun' : glyphOf((st.routines.find(r => r.id === w.routineId) || {}).emoji)
   return <div className="item" onClick={onClick}>
     <span className="lrow-i" style={{ width: 34, height: 34, borderRadius: 8, fontSize: 19 }}><Icon name={glyph} /></span>
     <div className="grow"><div className="tt">{w.name}</div>
-      <div className="ss">{[fmtDate(w.d, true), ...durPart(w.end - w.start), t('{0} sets', setsDone(w)), fmtVol(w.vol, st.unit)].join(' · ')}</div></div>
+      <div className="ss">{w.kind === 'activity' ? [fmtDate(w.d, true), ...durPart(w.end - w.start), t('Intensity') + ' ' + w.intensity + '/10'].join(' · ') : [fmtDate(w.d, true), ...durPart(w.end - w.start), t('{0} sets', setsDone(w)), fmtVol(w.vol, st.unit)].join(' · ')}</div></div>
     {w.prs && w.prs.length > 0 && <span className="pr"><Icon name="trophy" />{w.prs.length} PR</span>}
     <Icon name="chevronRight" className="chev" />
   </div>
@@ -1048,7 +1140,8 @@ function doFinishWorkout() {
     // `target` (what the session prescribed) is kept alongside the sets: without it a
     // finished workout cannot say whether it hit its reps, and a timed session reads back
     // as "0 reps". It is what the progression engine works from.
-    entries: A.entries.map(e => ({ id: e.id, sets: e.sets, topW: e.topW || null, target: e.target || null })).filter(e => e.sets.some(s => s.done)),
+    entries: A.entries.map(e => ({ id: e.id, sets: e.sets, topW: e.topW || null, target: e.target || null, ...(e.note?.trim() ? { note: e.note.trim().slice(0, 500) } : {}) })).filter(e => e.sets.some(s => s.done)),
+    ...(A.note?.trim() ? { note: A.note.trim().slice(0, 1000) } : {}),
     prs
   }
   w.vol = workoutVolume(w)

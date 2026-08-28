@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useStore } from '../store/useStore.js'
 import { DAYN, uid, exCount } from '../lib/format.js'
@@ -10,6 +11,7 @@ import { glyphOf, DEFAULT_GLYPH } from '../lib/glyphs.js'
 import { coachAvailable } from '../lib/coach.js'
 import { DEMO } from '../lib/demo.js'
 import { MOBILE } from '../lib/mobile.js'
+import { moveWeeklyRoutine } from '../lib/activities.js'
 
 export default function Plan() {
   const nav = useNavigate()
@@ -18,6 +20,7 @@ export default function Plan() {
   const config = useStore(s => s.config)
   const update = useStore(s => s.update)
   const coachOn = coachAvailable(config, user, { demo: DEMO, mobile: MOBILE })
+  const [dragging, setDragging] = useState(null)
 
   const addRoutine = () => {
     const r = { id: uid(), name: t('New routine'), emoji: DEFAULT_GLYPH, ex: [] }
@@ -33,12 +36,13 @@ export default function Plan() {
     </div>
     <div className="cols"><div>
       <h4 className="sec">{t('Week schedule')}</h4>
+      <div className="small dim" style={{ margin: '-5px 2px 8px' }}>{t('Drag a routine to another day, or tap it for Move options.')}</div>
       <div className="list" style={{ display: 'flex', flexDirection: 'column' }}>
         {[1, 2, 3, 4, 5, 6, 0].map(d => {
           const routines = routineIds(S.week[d]).map(id => S.routines.find(x => x.id === id)).filter(Boolean)
-          return <div key={d} className="item" onClick={() => routines.length === 1 ? scheduledDayActionsSheet(d, routines[0].id) : dayAssignSheet(d)}>
+          return <div key={d} className="item" onDragOver={e => e.preventDefault()} onDrop={e => { e.preventDefault(); if (dragging) update(s => { moveWeeklyRoutine(s, dragging.day, d, dragging.id) }); setDragging(null) }} onClick={() => routines.length === 1 ? scheduledDayActionsSheet(d, routines[0].id) : dayAssignSheet(d)}>
             <div className="grow"><div className="tt">{t(DAYN[d])}</div></div>
-            {routines.length ? <span className="tag acc"><Icon name={glyphOf(routines[0].emoji)} />{routines.length === 1 ? routines[0].name : t('{0} activities', routines.length)}</span> : <span className="tag">{t('Rest')}</span>}
+            {routines.length ? <div className="row" style={{ gap: 4, flexWrap: 'wrap', justifyContent: 'flex-end' }}>{routines.map(r => <span key={r.id} draggable className="tag acc" onDragStart={e => { e.stopPropagation(); setDragging({ day: d, id: r.id }) }} onDragEnd={() => setDragging(null)}><Icon name={glyphOf(r.emoji)} />{r.name}</span>)}</div> : <span className="tag">{t('Rest')}</span>}
             <Icon name="chevronRight" className="chev" /></div>
         })}
       </div>

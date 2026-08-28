@@ -4,7 +4,7 @@ import { useStore } from '../store/useStore.js'
 import { effectiveRoutine, effectiveRoutineIds, streakWeeks, lastBW, setsDoneActive, routineIds } from '../lib/history.js'
 import { fmtNum, fmtDate, todayISO, isoOf, weekKey, DAYS } from '../lib/format.js'
 import { t, dateLocale } from '../lib/i18n.js'
-import { bwSheet, goalSheet, dayOverrideSheet, plannedDaySheet, calendarSheet, startFlow, loadStarterPlan, bwDeltaColor } from '../sheets.jsx'
+import { bwSheet, goalSheet, dayOverrideSheet, plannedDaySheet, calendarSheet, activityLogSheet, readinessSheet, missedSessionsSheet, startFlow, loadStarterPlan, bwDeltaColor } from '../sheets.jsx'
 import LineChart from '../components/LineChart.jsx'
 import Icon from '../components/Icon.jsx'
 import { Button } from '../components/ui.jsx'
@@ -13,6 +13,7 @@ import { coachAvailable, hasConsent } from '../lib/coach.js'
 import { useCoachStatus } from '../lib/coach-api.js'
 import { DEMO } from '../lib/demo.js'
 import { MOBILE } from '../lib/mobile.js'
+import { missedSessions } from '../lib/activities.js'
 
 // A job in flight or a proposal waiting is the only reason the Coach interrupts Home. When it
 // has nothing to say it renders nothing at all — and it only polls while Home is on screen.
@@ -47,6 +48,7 @@ export default function Home() {
   const config = useStore(s => s.config)
   const [weekOffset, setWeekOffset] = useState(0)
   const coachOn = coachAvailable(config, user, { demo: DEMO, mobile: MOBILE })
+  const missedCount = missedSessions(S, todayISO()).length
 
   const today = new Date()
   const routine = effectiveRoutine(S, todayISO())
@@ -109,6 +111,12 @@ export default function Home() {
     </div>
 
     {coachOn && <CoachCard nav={nav} />}
+
+    <div className="card">
+      <div className="row between" style={{ marginBottom: 10 }}><h2 style={{ margin: 0 }}>{t('Quick log')}</h2>{missedCount > 0 && <span className="tag" style={{ color: 'var(--orange)' }}>{t('{0} missed', missedCount)}</span>}</div>
+      <div className="row" style={{ gap: 8 }}><Button icon="figureRun" onClick={() => activityLogSheet()}>{t('Activity')}</Button><Button icon="heart" onClick={readinessSheet}>{t('Readiness')}</Button></div>
+      {missedCount > 0 && <><div style={{ height: 8 }} /><Button variant="tinted" icon="calendar" onClick={missedSessionsSheet}>{t('Review missed sessions')}</Button></>}
+    </div>
 
     {!S.routines.length && !S.active && (
       <div className="card">
