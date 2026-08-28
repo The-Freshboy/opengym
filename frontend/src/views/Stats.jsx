@@ -146,6 +146,9 @@ export default function Stats() {
   const bw30 = S.bodyweight.filter(b => (b.t || new Date(b.d).getTime()) > now - 30 * 86400000)
   const bwDelta30 = bw30.length > 1 ? bw30[bw30.length - 1].w - bw30[0].w : null
   const monthW = S.workouts.filter(w => w.d.slice(0, 7) === todayISO().slice(0, 7)).length
+  const lastSession = S.workouts[S.workouts.length - 1]
+  const activityCount = S.workouts.filter(w => w.kind === 'activity').length
+  const incompleteCount = S.workouts.filter(w => w.incomplete).length
 
   const exHist = [...new Set(S.workouts.flatMap(w => w.entries.map(e => e.id)))].filter(id => EXIDX[id]).sort((a, b) => EXIDX[a].n < EXIDX[b].n ? -1 : 1)
   const curEx = exId && exHist.includes(exId) ? exId : exHist[0] || null
@@ -203,6 +206,18 @@ export default function Stats() {
       <div className="tile"><div className="l"><Icon name="calendar" />{t('This month')}</div><div className="v">{monthW}</div></div>
       <div className="tile"><div className="l"><Icon name="flame" />{t('Week streak')}</div><div className="v">{streakWeeks(S)}</div></div>
       <div className="tile"><div className="l"><Icon name="scale" />{t('Weight 30d')}</div><div className="v" style={{ fontSize: 22, color: bwDelta30 === null ? 'inherit' : bwDeltaColor(bwDelta30, (lastBW(S) || {}).w || 0) }}>{bwDelta30 === null ? '—' : (bwDelta30 > 0 ? '+' : '') + fmtNum(bwDelta30) + ' ' + S.unit}</div></div>
+    </div>
+
+    <div className="card tappable" style={{ cursor: 'pointer' }} onClick={() => nav('/history')}>
+      <div className="row between" style={{ gap: 12 }}>
+        <div className="row" style={{ gap: 10, minWidth: 0 }}>
+          <span className="lrow-i"><Icon name="history" /></span>
+          <div style={{ minWidth: 0 }}><h2 style={{ margin: 0 }}>{t('Workout history')}</h2>
+            <div className="muted small">{lastSession ? t('Last: {0} · {1}', lastSession.name, fmtDate(lastSession.d, true)) : t('Search, review and repeat past sessions')}</div></div>
+        </div>
+        <Icon name="chevronRight" className="chev" />
+      </div>
+      {!!S.workouts.length && <div className="row" style={{ gap: 6, marginTop: 10, flexWrap: 'wrap' }}><span className="tag acc">{t('{0} sessions', S.workouts.length)}</span>{activityCount > 0 && <span className="tag">{t('{0} activities', activityCount)}</span>}{incompleteCount > 0 && <span className="tag" style={{ color: 'var(--orange)' }}>{t('{0} incomplete', incompleteCount)}</span>}</div>}
     </div>
 
     <div className="card">
