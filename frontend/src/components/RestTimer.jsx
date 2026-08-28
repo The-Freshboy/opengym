@@ -14,7 +14,7 @@ export default function RestTimer() {
   const timer = useUI(s => s.timer)
   const work = useUI(s => s.work)
   const editing = useStore(s => !!s.S.active?.editingWorkoutId)
-  const { addRest, stopRest, finishWorkEarly, stopWork } = useUI()
+  const { addRest, startRest, stopRest, finishWorkEarly, stopWork } = useUI()
   const on = editing ? null : work || timer
   // The bar is fixed above the tab bar and floats over whatever is beneath it — during a
   // rest that was the next set's row. Extra bottom padding lets the page scroll clear.
@@ -48,7 +48,8 @@ export default function RestTimer() {
       </div>
       <div className="acts">
         <Button size="sm" icon="minus" onClick={() => addRest(-15)}>15s</Button>
-        <Button size="sm" icon="plus" onClick={() => addRest(15)}>15s</Button>
+        <Button size="sm" icon="plus" onClick={() => addRest(30)}>30s</Button>
+        <select className="timef" aria-label={t('Rest preset')} value="" onChange={e => { if (e.target.value) startRest(Number(e.target.value)) }}><option value="">{t('Preset')}</option>{[60, 90, 120, 180].map(s => <option key={s} value={s}>{s / 60}m{s % 60 ? ' ' + s % 60 + 's' : ''}</option>)}</select>
         <Button size="sm" variant="primary" className="skip" onClick={stopRest}>{t('Skip')}</Button>
       </div>
     </div>

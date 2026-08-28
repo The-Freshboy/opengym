@@ -1,7 +1,14 @@
-import { isoOf, uid } from './format.js'
+import { isoOf, uid, todayISO } from './format.js'
 import { effectiveRoutineIds, routineIds, setDayRoutineIds } from './history.js'
 
 export const ACTIVITY_TYPES = ['Climbing', 'Hiking', 'Running', 'Cycling', 'Swimming', 'Sport', 'Mobility', 'Recovery', 'Other']
+
+export function clearFutureDayOverrides(S, weekdays, fromIso = todayISO()) {
+  const days = new Set([].concat(weekdays).map(Number))
+  Object.keys(S.dayPlan || {}).forEach(iso => {
+    if (iso >= fromIso && days.has(new Date(iso + 'T12:00:00').getDay())) delete S.dayPlan[iso]
+  })
+}
 
 export function makeActivity(input, now = Date.now()) {
   const durationMin = Math.max(1, Math.round(Number(input.durationMin) || 1))
@@ -25,6 +32,7 @@ export function moveWeeklyRoutine(S, fromDay, toDay, routineId) {
   const to = [...routineIds(S.week[toDay]), routineId]
   if (from.length) S.week[fromDay] = from; else delete S.week[fromDay]
   S.week[toDay] = [...new Set(to)]
+  clearFutureDayOverrides(S, [fromDay, toDay])
   return true
 }
 

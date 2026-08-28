@@ -1,10 +1,15 @@
 import { describe, expect, it } from 'vitest'
-import { makeActivity, missedSessions, moveWeeklyRoutine, shiftRemainingWeek } from './activities.js'
+import { makeActivity, missedSessions, moveWeeklyRoutine, shiftRemainingWeek, clearFutureDayOverrides } from './activities.js'
 import { effectiveRoutineIds } from './history.js'
 
 const state = () => ({ routines: [{ id: 'gym' }, { id: 'climb' }], week: { 1: 'gym', 2: 'climb' }, dayPlan: {}, workouts: [] })
 
 describe('activities and schedule recovery', () => {
+  it('clears stale future overrides when a recurring weekday changes', () => {
+    const S = state(); S.dayPlan = { '2026-08-24': 'climb', '2026-08-31': 'climb', '2026-08-25': 'gym', '2026-08-17': 'climb' }
+    clearFutureDayOverrides(S, 1, '2026-08-24')
+    expect(S.dayPlan).toEqual({ '2026-08-25': 'gym', '2026-08-17': 'climb' })
+  })
   it('creates a bounded standalone activity record', () => {
     const a = makeActivity({ d: '2026-08-28', type: 'Climbing', durationMin: 90, intensity: 12, note: 'Bouldering' }, 1)
     expect(a).toMatchObject({ kind: 'activity', activityType: 'Climbing', durationMin: 90, intensity: 10, entries: [] })

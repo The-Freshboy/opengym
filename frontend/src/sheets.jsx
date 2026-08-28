@@ -15,7 +15,7 @@ import { Button, Slider, Switch, Segmented, SelectRow, TextArea } from './compon
 import { glyphOf, GLYPH_GROUPS, DEFAULT_GLYPH } from './lib/glyphs.js'
 import BodyMap from './components/BodyMap.jsx'
 import { loadOfWorkouts } from './lib/muscles.js'
-import { ACTIVITY_TYPES, makeActivity, missedSessions, moveWeeklyRoutine, shiftRemainingWeek } from './lib/activities.js'
+import { ACTIVITY_TYPES, makeActivity, missedSessions, moveWeeklyRoutine, shiftRemainingWeek, clearFutureDayOverrides } from './lib/activities.js'
 import { parseImport, mergeImport } from './lib/import-csv.js'
 import { buildPlanBundle, parsePlan, mergePlan, printPlan } from './lib/plan-share.js'
 import { estimate1RM, best1RM, is1RMRecord, REP_CAP } from './lib/onerm.js'
@@ -412,6 +412,7 @@ function usageMap(st) {
 }
 function ExercisePicker({ onPick, close }) {
   const st = useStore(s => s.S)
+  const update = useStore(s => s.update)
   const usage = usageMap(st)
   const [q, setQ] = useState('')
   const [bp, setBp] = useState('')          // '' = all, '★' = chosen, else a body part
@@ -419,8 +420,9 @@ function ExercisePicker({ onPick, close }) {
   const [shown, setShown] = useState(50)
   const ql = q.toLowerCase().trim()
   const all = allExercises(st)
+  const recent = [...new Set((st.workouts || []).slice().reverse().flatMap(w => (w.entries || []).map(e => e.id)))].slice(0, 30)
   let base = all.filter(e =>
-    (bp === '★' ? usage[e.id] : (!bp || e.bp === bp)) &&
+    (bp === '★' ? usage[e.id] : bp === '♥' ? (st.favoriteEx || []).includes(e.id) : bp === 'recent' ? recent.includes(e.id) : (!bp || e.bp === bp)) &&
     (!ql || e.n.toLowerCase().includes(ql) || e.tg.includes(ql) || e.eq.includes(ql) || (e.desc || '').toLowerCase().includes(ql)))
   if (bp === '★') base = [...base].sort((a, b) => (usage[b.id] - usage[a.id]) || (a.n < b.n ? -1 : 1))
   const eqOpts = equipmentOf(base)
@@ -433,6 +435,8 @@ function ExercisePicker({ onPick, close }) {
     <div className="search"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7" /><path d="m21 21-4.3-4.3" /></svg>
       <input className="input" placeholder={t('Search {0} exercises…', all.length)} value={q} onChange={e => { setQ(e.target.value); setShown(50) }} /></div>
     <div className="chips" style={{ margin: eqOpts.length > 1 ? '10px 0 6px' : '10px 0' }}>
+      <button className={'chip' + (bp === '♥' ? ' on' : '')} onClick={() => { setBp('♥'); setEq(''); setShown(50) }}><Icon name="heart" style={{ fontSize: 12 }} /> {t('Favourites')}</button>
+      {!!recent.length && <button className={'chip' + (bp === 'recent' ? ' on' : '')} onClick={() => { setBp('recent'); setEq(''); setShown(50) }}><Icon name="history" style={{ fontSize: 12 }} /> {t('Recent')}</button>}
       {chosenCount > 0 && <button className={'chip' + (bp === '★' ? ' on' : '')} onClick={() => { setBp('★'); setEq(''); setShown(50) }}><Icon name="starFill" style={{ fontSize: 12, display: 'inline-block', marginRight: 4, verticalAlign: '-1px' }} />{t('Chosen')} ({chosenCount})</button>}
       <button className={'chip nocap' + (!bp ? ' on' : '')} onClick={() => { setBp(''); setEq(''); setShown(50) }}>{t('All')}</button>
       {BODYPARTS.map(b => <button key={b} className={'chip' + (bp === b ? ' on' : '')} onClick={() => { setBp(b); setEq(''); setShown(50) }}>{t(b)}</button>)}
@@ -448,7 +452,7 @@ function ExercisePicker({ onPick, close }) {
       </div>}
       {f.slice(0, shown).map(e => <div key={e.id} className="item" onClick={() => onPick(e)}>
         <Thumb ex={e} /><div className="grow"><div className="tt capitalize">{e.n}</div><div className="ss capitalize">{t(e.tg || e.bp)} · {t(e.eq)}</div></div>
-        {usage[e.id] && <span className="tag acc"><Icon name="starFill" /></span>}<Icon name="plus" className="chev" />
+        <button className="iconbtn" aria-label={t('Favourite')} onClick={ev => { ev.stopPropagation(); update(s => { s.favoriteEx ||= []; s.favoriteEx = s.favoriteEx.includes(e.id) ? s.favoriteEx.filter(id => id !== e.id) : [...s.favoriteEx, e.id] }) }}><Icon name={(st.favoriteEx || []).includes(e.id) ? 'heart' : 'star'} /></button>{usage[e.id] && <span className="tag acc"><Icon name="starFill" /></span>}<Icon name="plus" className="chev" />
       </div>)}
       {f.length === 0 && bp === '★' && <div className="empty">{t('Nothing chosen yet — add exercises and they’ll show up here.')}</div>}
     </div>
@@ -697,6 +701,7 @@ function DayAssign({ day, close }) {
     const next = ids.includes(id) ? ids.filter(x => x !== id) : [...ids, id]
     if (next.length) s.week[day] = next
     else delete s.week[day]
+    clearFutureDayOverrides(s, day)
   })
   const routines = st.routines.filter(r => r.name.toLowerCase().includes(query.trim().toLowerCase()))
   return <>
@@ -705,7 +710,7 @@ function DayAssign({ day, close }) {
     {searching && <input autoFocus type="search" value={query} onChange={e => setQuery(e.target.value)} placeholder={t('Search routines')} aria-label={t('Search routines')} style={{ width: '100%', margin: '8px 0' }} />}
     <div style={{ height: 8 }} />
     <div className="list">
-      <div className="item" onClick={() => update(s => { delete s.week[day] })}><span className="lrow-i" style={{ background: 'var(--surface-3)' }}><Icon name="moon" /></span><div className="grow"><div className="tt">{t('Rest day')}</div></div>{selected.length === 0 && <Icon name="check" className="accent" />}</div>
+      <div className="item" onClick={() => update(s => { delete s.week[day]; clearFutureDayOverrides(s, day) })}><span className="lrow-i" style={{ background: 'var(--surface-3)' }}><Icon name="moon" /></span><div className="grow"><div className="tt">{t('Rest day')}</div></div>{selected.length === 0 && <Icon name="check" className="accent" />}</div>
       {routines.map(r => <div key={r.id} className="item" onClick={() => toggle(r.id)}>
         <span className="lrow-i"><Icon name={glyphOf(r.emoji)} /></span>
         <div className="grow"><div className="tt">{r.name}</div><div className="ss">{exCount(r.ex.length)}</div></div>
@@ -860,14 +865,39 @@ function MissedSessions({ close }) {
 }
 export const missedSessionsSheet = () => ui().openSheet(close => <MissedSessions close={close} />)
 
+function HomeShortcuts({ close }) {
+  const st = useStore(s => s.S); const update = useStore(s => s.update)
+  const options = [['activity', 'figureRun', 'Activity'], ['readiness', 'heart', 'Readiness'], ['missed', 'calendar', 'Missed sessions'], ['weight', 'scale', 'Body weight'], ['calendar', 'list', 'Agenda']]
+  const selected = st.homeShortcuts || ['activity', 'readiness']
+  return <><h3>{t('Home shortcuts')}</h3><div className="muted small" style={{ marginBottom: 12 }}>{t('Choose up to three actions.')}</div><div className="list">{options.map(([id, icon, label]) => <div className="item" key={id} onClick={() => update(s => { const cur = s.homeShortcuts || []; s.homeShortcuts = cur.includes(id) ? cur.filter(x => x !== id) : cur.length < 3 ? [...cur, id] : cur })}><span className="lrow-i"><Icon name={icon} /></span><div className="grow"><div className="tt">{t(label)}</div></div>{selected.includes(id) && <Icon name="check" className="accent" />}</div>)}</div><div style={{ height: 12 }} /><Button variant="primary" onClick={close}>{t('Done')}</Button></>
+}
+export const homeShortcutsSheet = () => ui().openSheet(close => <HomeShortcuts close={close} />)
+
 /* ============================ workout detail ============================ */
+function DuplicateRecord({ w, close }) {
+  const update = useStore(s => s.update); const [date, setDate] = useState(todayISO())
+  const save = () => {
+    update(s => {
+      const duration = Math.max(60000, (w.end || 0) - (w.start || 0)); const end = new Date(date + 'T12:00:00').getTime() + duration
+      s.workouts.push({ ...JSON.parse(JSON.stringify(w)), id: uid(), d: date, start: end - duration, end, prs: [] })
+    }); close(); toast(t('Copied to {0}', fmtDate(date)))
+  }
+  return <><h3>{t('Repeat / duplicate')}</h3><div className="muted small" style={{ marginBottom: 12 }}>{w.name}</div><input className="field" type="date" value={date} onChange={e => setDate(e.target.value)} /><div style={{ height: 12 }} /><Button variant="primary" onClick={save}>{t('Duplicate to date')}</Button></>
+}
+const duplicateRecordSheet = w => ui().openSheet(close => <DuplicateRecord w={w} close={close} />)
+
+function saveWorkoutAsRoutine(w) {
+  update(s => s.routines.push({ id: uid(), name: w.name + ' ' + t('template'), emoji: DEFAULT_GLYPH, ex: (w.entries || []).map(e => ({ id: e.id, sets: Math.max(1, e.sets?.filter(x => x.done).length || 1), ...(e.target || {}) })) }))
+  toast(t('Routine created'))
+}
+
 function WorkoutDetail({ w, close }) {
   const st = useStore(s => s.S)
   const update = useStore(s => s.update)
   return <>
     <h3>{w.name}</h3>
     <div className="muted small" style={{ marginBottom: 12 }}>{[fmtDate(w.d, true), ...durPart(w.end - w.start), fmtVol(w.vol, st.unit), ...(w.bw ? [fmtNum(w.bw) + ' ' + st.unit] : [])].join(' · ')}</div>
-    {w.kind === 'activity' && <><div className="row" style={{ gap: 6, flexWrap: 'wrap', marginBottom: 12 }}><span className="tag acc">{t(w.activityType)}</span><span className="tag">{t('Intensity')} {w.intensity}/10</span>{w.location && <span className="tag">{w.location}</span>}{w.grade && <span className="tag">{w.grade}</span>}{w.distance && <span className="tag">{w.distance} km</span>}</div>{w.note && <div className="card small" style={{ whiteSpace: 'pre-wrap' }}>{w.note}</div>}<Button variant="primary" icon="pencil" onClick={() => { close(); activityLogSheet(w) }}>{t('Edit activity')}</Button><div style={{ height: 8 }} /><Button variant="danger" onClick={() => confirmSheet({ title: t('Delete activity?'), message: t('This removes it from your history for good.'), confirmText: t('Delete'), danger: true, onConfirm: () => { update(s => { s.workouts = s.workouts.filter(x => x.id !== w.id) }); close() } })}>{t('Delete activity')}</Button></>}
+    {w.kind === 'activity' && <><div className="row" style={{ gap: 6, flexWrap: 'wrap', marginBottom: 12 }}><span className="tag acc">{t(w.activityType)}</span><span className="tag">{t('Intensity')} {w.intensity}/10</span>{w.location && <span className="tag">{w.location}</span>}{w.grade && <span className="tag">{w.grade}</span>}{w.distance && <span className="tag">{w.distance} km</span>}</div>{w.note && <div className="card small" style={{ whiteSpace: 'pre-wrap' }}>{w.note}</div>}<Button variant="primary" icon="pencil" onClick={() => { close(); activityLogSheet(w) }}>{t('Edit activity')}</Button><div style={{ height: 8 }} /><Button variant="tinted" icon="reset" onClick={() => { close(); duplicateRecordSheet(w) }}>{t('Repeat / duplicate')}</Button><div style={{ height: 8 }} /><Button variant="danger" onClick={() => confirmSheet({ title: t('Delete activity?'), message: t('This removes it from your history for good.'), confirmText: t('Delete'), danger: true, onConfirm: () => { update(s => { s.workouts = s.workouts.filter(x => x.id !== w.id) }); close() } })}>{t('Delete activity')}</Button></>}
     {w.kind !== 'activity' && <>
     {w.entries.map((e, i) => {
       const ex = EXIDX[e.id]
@@ -885,6 +915,10 @@ function WorkoutDetail({ w, close }) {
       close(); nav('/workout')
     }}>{t('Edit workout')}</Button>
     <div style={{ height: 8 }} />
+    <Button variant="tinted" icon="reset" onClick={() => { close(); duplicateRecordSheet(w) }}>{t('Repeat / duplicate')}</Button>
+    <div style={{ height: 8 }} />
+    <Button variant="tinted" icon="plus" onClick={() => { saveWorkoutAsRoutine(w); close() }}>{t('Save as routine')}</Button>
+    <div style={{ height: 8 }} />
     <Button variant="danger" onClick={() => confirmSheet({ title: t('Delete workout?'), message: t('This removes it from your history for good.'), confirmText: t('Delete'), danger: true, onConfirm: () => { update(s => { const next = removeCompletedWorkout(s.workouts, s.exWeights, w.id); s.workouts = next.workouts; s.exWeights = next.exWeights }); close(); toast(t('Workout deleted')) } })}>{t('Delete workout')}</Button></>}
   </>
 }
@@ -893,6 +927,7 @@ export const workoutDetailSheet = w => ui().openSheet(close => <WorkoutDetail w=
 /* ============================ calendar ============================ */
 function Calendar({ start, close }) {
   const st = useStore(s => s.S)
+  const update = useStore(s => s.update)
   const [cur, setCur] = useState(() => { const d = start ? new Date(start) : new Date(); d.setDate(1); return d })
   const y = cur.getFullYear(), mo = cur.getMonth()
   const byDay = {}
@@ -920,7 +955,7 @@ function Calendar({ start, close }) {
       <h3 style={{ margin: 0 }}>{t(MONTHS_LONG[mo])} {y}</h3>
       <button className="iconbtn" onClick={() => setCur(new Date(y, mo + 1, 1))} aria-label="Next month"><Icon name="chevronRight" /></button>
     </div>
-    <div style={{ display: 'flex', justifyContent: 'center', margin: '8px 0' }}><Button size="sm" variant="tinted" icon="list" onClick={() => { close(); agendaSheet() }}>{t('Agenda view')}</Button></div>
+    <div style={{ display: 'flex', justifyContent: 'center', margin: '8px 0' }}><Button size="sm" variant="tinted" icon="list" onClick={() => { update(s => { s.calendarView = 'agenda' }); close(); agendaSheet() }}>{t('Agenda view')}</Button></div>
     <div className="small muted" style={{ textAlign: 'center' }}>{monthWs.length ? `${t(monthWs.length === 1 ? '{0} workout' : '{0} workouts', monthWs.length)} · ${fmtDur(monthMs)} · ${fmtVol(monthVol, st.unit)}` : t('No workouts this month')}</div>
     <div className="cal-grid">{['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su'].map(l => <div key={l} className="cal-h">{t(l)}</div>)}{cells}</div>
     <div className="cal-legend">
@@ -931,18 +966,26 @@ function Calendar({ start, close }) {
     <div className="small dim" style={{ textAlign: 'center', marginTop: 10 }}>{t('Tap a trained day for details · tap any other day to plan a session')}</div>
   </>
 }
-export const calendarSheet = start => ui().openSheet(close => <Calendar start={start} close={close} />)
+export const calendarSheet = start => S().calendarView === 'agenda' ? agendaSheet() : ui().openSheet(close => <Calendar start={start} close={close} />)
 
 function Agenda({ close }) {
   const st = useStore(s => s.S)
+  const update = useStore(s => s.update)
+  const filters = st.calendarFilters || ['completed', 'planned', 'activities', 'missed']
+  const toggleFilter = id => update(s => { const cur = s.calendarFilters || []; s.calendarFilters = cur.includes(id) ? cur.filter(x => x !== id) : [...cur, id] })
   const dates = []
   const start = new Date(); start.setDate(start.getDate() - 7)
   for (let i = 0; i < 29; i++) { const d = new Date(start); d.setDate(start.getDate() + i); dates.push(isoOf(d)) }
-  return <><div className="row between"><h3>{t('Agenda')}</h3><Button size="sm" icon="calendar" onClick={() => { close(); calendarSheet() }}>{t('Month')}</Button></div>
+  return <><div className="row between"><h3>{t('Agenda')}</h3><Button size="sm" icon="calendar" onClick={() => { update(s => { s.calendarView = 'month' }); close(); ui().openSheet(c => <Calendar close={c} />) }}>{t('Month')}</Button></div>
+    <div className="chips" style={{ marginBottom: 10 }}>{[['completed', 'Completed'], ['planned', 'Planned'], ['activities', 'Activities'], ['missed', 'Missed']].map(([id, label]) => <button key={id} className={'chip' + (filters.includes(id) ? ' on' : '')} onClick={() => toggleFilter(id)}>{t(label)}</button>)}</div>
     <div className="list">{dates.map(iso => {
-      const done = st.workouts.filter(w => w.d === iso)
-      const completedRoutineIds = new Set(done.map(w => w.routineId).filter(Boolean))
-      const planned = effectiveRoutineIds(st, iso).filter(id => !completedRoutineIds.has(id)).map(id => st.routines.find(r => r.id === id)).filter(Boolean)
+      const rawDone = st.workouts.filter(w => w.d === iso)
+      const done = rawDone.filter(w => w.kind === 'activity' ? filters.includes('activities') : filters.includes('completed'))
+      // Filtering completed cards must not turn an already-finished routine into a missed one.
+      const completedRoutineIds = new Set(rawDone.map(w => w.routineId).filter(Boolean))
+      const isPast = iso < todayISO()
+      const showPlan = isPast ? filters.includes('missed') : filters.includes('planned')
+      const planned = showPlan ? effectiveRoutineIds(st, iso).filter(id => !completedRoutineIds.has(id)).map(id => st.routines.find(r => r.id === id)).filter(Boolean) : []
       if (!done.length && !planned.length) return null
       return <div key={iso} style={{ marginBottom: 14 }}><div className="small muted" style={{ margin: '0 4px 5px' }}>{fmtDate(iso, true)}</div>
         {done.map(w => <WorkoutRow key={w.id} w={w} onClick={() => { close(); workoutDetailSheet(w) }} />)}
@@ -1101,7 +1144,7 @@ function FinishSummary({ w, prs, e1prs = [], close }) {
     <Button variant="primary" onClick={() => { close(); nav('/home') }}>{t('Nice!')}</Button>
   </div>
 }
-export function finishWorkout() {
+export function finishWorkout(incomplete = false) {
   const A = S().active
   if (!A) return
   const done = setsDoneActive(A)
@@ -1111,6 +1154,7 @@ export function finishWorkout() {
     doFinishWorkout()
     return
   }
+  if (incomplete === true) { update(s => { if (s.active) s.active.incomplete = true }); doFinishWorkout(); return }
   if (!done) { confirmSheet({ title: t('Nothing logged yet'), message: t('You haven’t checked off any sets. Finish the workout anyway?'), confirmText: t('Finish anyway'), onConfirm: doFinishWorkout }); return }
   if (done < total) { confirmSheet({ title: t('Finish early?'), message: t(total - done === 1 ? '{0} set still unchecked. Finish the workout now?' : '{0} sets still unchecked. Finish the workout now?', total - done), confirmText: t('Finish workout'), onConfirm: doFinishWorkout }); return }
   doFinishWorkout()
@@ -1142,7 +1186,8 @@ function doFinishWorkout() {
     // as "0 reps". It is what the progression engine works from.
     entries: A.entries.map(e => ({ id: e.id, sets: e.sets, topW: e.topW || null, target: e.target || null, ...(e.note?.trim() ? { note: e.note.trim().slice(0, 500) } : {}) })).filter(e => e.sets.some(s => s.done)),
     ...(A.note?.trim() ? { note: A.note.trim().slice(0, 1000) } : {}),
-    prs
+    prs,
+    ...(A.incomplete ? { incomplete: true } : {})
   }
   w.vol = workoutVolume(w)
   update(s => {

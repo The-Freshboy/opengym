@@ -133,6 +133,9 @@ export default function Settings() {
       <Row icon="bell" iconTint="var(--pink)" title={t('Sounds')}>
         <Switch checked={!!S.sound} onChange={v => update(s => { s.sound = v })} />
       </Row>
+      <Row icon="bolt" iconTint="var(--teal)" title={t('Haptic feedback')} subtitle={t('Vibrate for completed sets and timers.')}>
+        <Switch checked={S.haptics !== false} onChange={v => update(s => { s.haptics = v })} />
+      </Row>
       {/* Two names for the same judgement, so the column asks in the scale you already think in.
           The (i) sits before the control — you read it on the way to the choice, not after it. */}
       <Row icon="target" iconTint="var(--purple)" title={t('Effort per set')}>

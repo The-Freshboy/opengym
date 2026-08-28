@@ -21,6 +21,7 @@ export default function Plan() {
   const update = useStore(s => s.update)
   const coachOn = coachAvailable(config, user, { demo: DEMO, mobile: MOBILE })
   const [dragging, setDragging] = useState(null)
+  const [routineDrag, setRoutineDrag] = useState(null)
 
   const addRoutine = () => {
     const r = { id: uid(), name: t('New routine'), emoji: DEFAULT_GLYPH, ex: [] }
@@ -51,7 +52,8 @@ export default function Plan() {
         <h4 className="sec" style={{ margin: 0 }}>{t('Routines')}</h4>
         <Button size="sm" variant="tinted" icon="plus" onClick={addRoutine}>{t('New')}</Button>
       </div>
-      {S.routines.length ? <div className="list">{S.routines.map(r => <div key={r.id} className="item" onClick={() => nav('/plan/r/' + r.id)}>
+      {S.routines.length ? <div className="list">{S.routines.map((r, idx) => <div key={r.id} className="item" draggable onDragStart={() => setRoutineDrag(idx)} onDragEnd={() => setRoutineDrag(null)} onDragOver={e => e.preventDefault()} onDrop={e => { e.preventDefault(); e.stopPropagation(); if (routineDrag == null || routineDrag === idx) return; update(s => { const [moved] = s.routines.splice(routineDrag, 1); s.routines.splice(idx, 0, moved) }); setRoutineDrag(null) }} onClick={() => nav('/plan/r/' + r.id)}>
+        <span className="dim" title={t('Drag to reorder')}><Icon name="list" /></span>
         <span className="lrow-i"><Icon name={glyphOf(r.emoji)} /></span>
         <div className="grow"><div className="tt">{r.name}</div><div className="ss">{exCount(r.ex.length)}</div></div>
         <Icon name="chevronRight" className="chev" /></div>)}</div> : <>

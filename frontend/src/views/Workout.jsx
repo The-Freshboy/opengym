@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useStore } from '../store/useStore.js'
 import { useUI } from '../store/useUI.js'
 import { exOr } from '../lib/exercises.js'
-import { effectiveRoutine, lastEntryFor, bestWeightFor, buildSets, setsDoneActive, supersetUnits, unitOf, setLabel, modeOf, EFFORT, effortOf, stepEffort, capEffort, cleanupSg } from '../lib/history.js'
+import { effectiveRoutine, lastEntryFor, bestWeightFor, buildSets, defaultConfig, setsDoneActive, supersetUnits, unitOf, setLabel, modeOf, EFFORT, effortOf, stepEffort, capEffort, cleanupSg } from '../lib/history.js'
 import { fmtNum, fmtDate, todayISO, exCount, DAYN } from '../lib/format.js'
 import { beep, vibrate } from '../lib/sound.js'
 import { t } from '../lib/i18n.js'
@@ -176,6 +176,12 @@ function ActiveWorkout() {
     cleanupSg(s.active.entries)
     s.active.cur = Math.min(s.active.cur, Math.max(0, s.active.entries.length - 1))
   }, true)
+  const replaceExercise = idx => {
+    const oldId = A.entries[idx]?.id
+    exercisePicker(ex => useUI.getState().openSheet(close => <><h3>{t('Replace exercise')}</h3><div className="muted small" style={{ marginBottom: 14 }}>{t('Use {0} instead?', ex.n)}</div>
+      <Button variant="primary" onClick={() => { update(s => { const cfg = defaultConfig(ex.id); s.active.entries[idx] = { id: ex.id, target: cfg, sets: buildSets(s, { id: ex.id, ...cfg }) } }); close() }}>{t('Today only')}</Button><div style={{ height: 8 }} />
+      <Button variant="tinted" onClick={() => { update(s => { const cfg = defaultConfig(ex.id); s.active.entries[idx] = { id: ex.id, target: cfg, sets: buildSets(s, { id: ex.id, ...cfg }) }; const r = s.routines.find(x => x.id === s.active.routineId); if (r) r.ex = r.ex.map(c => c.id === oldId ? { id: ex.id, ...cfg } : c) }); close() }}>{t('Replace in routine')}</Button></>))
+  }
 
   // A timed set is held, not typed. The work timer records what was actually held — an early
   // finish logs 0:38 of a 0:45 target rather than crediting the full prescription — and then
@@ -199,7 +205,7 @@ function ActiveWorkout() {
     mutEntry(idx, e => {
       e.sets[i].done = !e.sets[i].done
       if (e.sets[i].done) {
-        beep(S.sound, 1040, 0.12); vibrate(30)
+        beep(S.sound, 1040, 0.12); if (S.haptics !== false) vibrate(30)
         const isLastExInUnit = idx === unit[unit.length - 1]
         const unitDone = unit.every(ui => (ui === idx ? e : A.entries[ui]).sets.every(x => x.done))
         if (isLastExInUnit && !unitDone) startRest(S.restSec)
@@ -250,7 +256,7 @@ function ActiveWorkout() {
     <div className="hdr">
       <button className="iconbtn" aria-label={t('Discard')} onClick={() => confirmSheet({ title: editing ? t('Discard changes?') : t('Discard workout?'), message: editing ? t('The saved workout will remain unchanged.') : t('The sets you logged in this session will be lost.'), confirmText: t('Discard'), danger: true, onConfirm: () => { update(s => { s.active = null }); stopRest(); nav(editing ? '/history' : '/home') } })}><Icon name="xmark" /></button>
       <div style={{ textAlign: 'center' }}><div style={{ fontWeight: 600 }}>{editing ? t('Edit workout') : A.name}</div><div className="sub">{editing ? fmtDate(A.d, true) : <Elapsed start={A.start} />} · {t('{0} sets', editing ? total : done + '/' + total)}</div></div>
-      <button className="iconbtn" style={{ color: 'var(--acc)' }} aria-label={editing ? t('Save changes') : t('Finish')} onClick={finishWorkout}><Icon name="check" /></button>
+      <div className="row" style={{ gap: 2 }}>{!editing && <button className="iconbtn" style={{ color: S.keepAwake !== false ? 'var(--yellow)' : undefined }} aria-label={t('Keep screen awake')} title={t('Keep screen awake')} onClick={() => update(s => { s.keepAwake = s.keepAwake === false })}><Icon name="sun" /></button>}<button className="iconbtn" style={{ color: 'var(--acc)' }} aria-label={editing ? t('Save changes') : t('Finish')} onClick={() => finishWorkout()}><Icon name="check" /></button></div>
     </div>
     {!editing && <div className="wprog"><i style={{ width: (total ? done / total * 100 : 0) + '%' }} /></div>}
 
@@ -269,6 +275,7 @@ function ActiveWorkout() {
         <ExerciseBlock entryIdx={cur} editing={editing} onToggle={i => toggle(cur, i)} onField={(i, f, v) => setField(cur, i, f, v)} onAddSet={() => addSet(cur)} onRemoveSet={() => removeSet(cur)} onStartTimed={i => startTimed(cur, i)} />
       )}
       <div style={{ height: 10 }} /><TextArea rows={2} maxLength={500} value={A.entries[cur]?.note || ''} onChange={e => update(s => { const en = s.active.entries[cur]; if (en) en.note = e.target.value })} placeholder={t('Exercise note (optional)')} />
+      <div className="row" style={{ gap: 8, marginTop: 8 }}><Button size="sm" icon="shuffle" onClick={() => replaceExercise(cur)}>{t('Replace exercise')}</Button>{lastEntryFor(S, A.entries[cur]?.id) && <Button size="sm" icon="reset" onClick={() => update(s => { const last = lastEntryFor(s, s.active.entries[cur].id); if (last) s.active.entries[cur].sets = last.sets.map(x => ({ ...x, done: editing })) })}>{t("Use last time's sets")}</Button>}</div>
     </> : <div className="empty"><div className="ico"><Icon name="shuffle" /></div>{t('Freestyle workout — add your first exercise.')}</div>}
 
     <div style={{ height: 12 }} />
@@ -292,10 +299,11 @@ function ActiveWorkout() {
       }}>{t('Remove exercise')}</Button></div></>}
     <div style={{ height: 10 }} /><TextArea rows={3} maxLength={1000} value={A.note || ''} onChange={e => update(s => { s.active.note = e.target.value })} placeholder={t('Workout notes (optional)')} />
     <div style={{ height: 10 }} />
+    {!editing && done > 0 && done < total && <><Button variant="tinted" icon="flag" onClick={() => finishWorkout(true)}>{t('Save as incomplete')}</Button><div style={{ height: 8 }} /></>}
     {(() => {
       const exDone = A.entries.filter(e => e.sets.length && e.sets.every(s => s.done)).length
       const allDone = A.entries.length > 0 && exDone === A.entries.length
-      return <button className={allDone ? 'btn primary' : 'btn ghost dim'} onClick={finishWorkout}>
+      return <button className={allDone ? 'btn primary' : 'btn ghost dim'} onClick={() => finishWorkout()}>
         {editing ? t('Save changes') : allDone ? t('Finish workout') : t('Finish workout early · {0} exercises', exDone + '/' + A.entries.length)}
       </button>
     })()}
