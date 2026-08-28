@@ -1,8 +1,8 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useStore } from '../store/useStore.js'
-import { effectiveRoutine, effectiveRoutineIds, streakWeeks, lastBW, setsDoneActive, routineIds } from '../lib/history.js'
-import { fmtNum, fmtDate, todayISO, isoOf, weekKey, DAYS } from '../lib/format.js'
+import { effectiveRoutine, effectiveRoutineIds, streakWeeks, lastBW, setsDone, setsDoneActive, routineIds } from '../lib/history.js'
+import { fmtNum, fmtDate, fmtVol, todayISO, isoOf, weekKey, DAYS } from '../lib/format.js'
 import { t, dateLocale } from '../lib/i18n.js'
 import { bwSheet, goalSheet, dayOverrideSheet, plannedDaySheet, calendarSheet, agendaSheet, activityLogSheet, readinessSheet, missedSessionsSheet, homeShortcutsSheet, startFlow, loadStarterPlan, bwDeltaColor } from '../sheets.jsx'
 import LineChart from '../components/LineChart.jsx'
@@ -60,6 +60,8 @@ export default function Home() {
   const routine = effectiveRoutine(S, todayISO())
   const todayRoutineIds = effectiveRoutineIds(S, todayISO())
   const todayOvr = S.dayPlan[todayISO()] !== undefined
+  const todayDone = S.workouts.filter(w => w.d === todayISO())
+  const todayWorkout = todayDone.find(w => w.kind !== 'activity') || todayDone[0]
   const bw = lastBW(S)
   const prevBW = S.bodyweight.length > 1 ? S.bodyweight[S.bodyweight.length - 2] : null
   const delta = bw && prevBW ? bw.w - prevBW.w : null
@@ -85,7 +87,7 @@ export default function Home() {
   const bwPoints = S.bodyweight.slice(-30).map(b => ({ t: b.t || new Date(b.d).getTime(), y: b.w, d: b.d }))
 
   // today's session shown right under the week strip
-  const onToday = () => { if (S.active) nav('/workout'); else if (todayRoutineIds.length > 1) plannedDaySheet(todayISO()); else if (routine) startFlow(routine.id); else dayOverrideSheet(todayISO()) }
+  const onToday = () => { if (S.active) nav('/workout'); else if (todayDone.length || todayRoutineIds.length > 1) plannedDaySheet(todayISO()); else if (routine) startFlow(routine.id); else dayOverrideSheet(todayISO()) }
 
   return <div className="narrow">
     <div className="hdr">
@@ -102,15 +104,17 @@ export default function Home() {
       <div className="week">{strip}</div>
       <div className="today-row" onClick={onToday}>
         <div className="row" style={{ gap: 9, minWidth: 0 }}>
-          <span className="lrow-i" style={{ background: S.active ? 'var(--orange)' : routine ? 'var(--acc)' : 'var(--surface-3)' }}>
-            <Icon name={S.active ? 'timer' : routine ? glyphOf(routine.emoji) : 'moon'} />
+          <span className="lrow-i" style={{ background: S.active ? 'var(--orange)' : todayDone.length ? 'var(--green)' : routine ? 'var(--acc)' : 'var(--surface-3)' }}>
+            <Icon name={S.active ? 'timer' : todayDone.length ? 'check' : routine ? glyphOf(routine.emoji) : 'moon'} />
           </span>
           <div style={{ minWidth: 0 }}>
             <div className="lbl2">{t('Today')}</div>
-            <div className="ttl">{S.active ? t('{0} — in progress', S.active.name) : todayRoutineIds.length > 1 ? t('{0} activities', todayRoutineIds.length) : routine ? routine.name : t('Rest day')}{todayOvr && routine ? ' · ' + t('rescheduled') : ''}</div>
+            <div className="ttl">{S.active ? t('{0} — in progress', S.active.name) : todayDone.length > 1 ? `${todayDone.length} sessions completed` : todayWorkout ? todayWorkout.name : todayRoutineIds.length > 1 ? t('{0} activities', todayRoutineIds.length) : routine ? routine.name : t('Rest day')}{!todayDone.length && todayOvr && routine ? ' · ' + t('rescheduled') : ''}</div>
+            {todayWorkout && <div className="ss">{todayWorkout.kind === 'activity' ? `${todayWorkout.durationMin || Math.round(((todayWorkout.end || 0) - (todayWorkout.start || 0)) / 60000)} min · intensity ${todayWorkout.intensity}/10` : `${setsDone(todayWorkout)} sets · ${fmtVol(todayWorkout.vol, S.unit)}`}</div>}
           </div>
         </div>
         {S.active ? <span className="tag" style={{ color: 'var(--orange)', background: 'color-mix(in srgb,var(--orange) 16%,transparent)' }}>{t('Resume')}</span>
+          : todayDone.length ? <span className="tag" style={{ color: 'var(--green)' }}>View</span>
           : routine ? <span className="tag acc">{t('Start')}</span>
           : <Icon name="plus" className="chev" />}
       </div>

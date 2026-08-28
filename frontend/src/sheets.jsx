@@ -792,9 +792,26 @@ export const movePlannedSheet = (iso, routineId) =>
 
 function PlannedDay({ iso, close }) {
   const st = useStore(s => s.S)
-  const ids = effectiveRoutineIds(st, iso)
+  const done = st.workouts.filter(w => w.d === iso)
+  const completedIds = new Set(done.map(w => w.routineId).filter(Boolean))
+  const completedNames = new Set(done.map(w => w.name))
+  const ids = effectiveRoutineIds(st, iso).filter(id => {
+    const routine = st.routines.find(r => r.id === id)
+    return !completedIds.has(id) && !completedNames.has(routine?.name)
+  })
   return <><h3>{fmtDate(iso, true)}</h3>
-    <div className="muted small" style={{ marginBottom: 12 }}>{t(ids.length === 1 ? '{0} planned activity' : '{0} planned activities', ids.length)}</div>
+    <div className="muted small" style={{ marginBottom: 12 }}>{done.length ? `${done.length} completed · ` : ''}{t(ids.length === 1 ? '{0} planned activity' : '{0} planned activities', ids.length)}</div>
+    {!!done.length && <div className="list" style={{ marginBottom: 12 }}>{done.map(w => w.kind === 'activity'
+      ? <WorkoutRow key={w.id} w={w} onClick={() => { close(); workoutDetailSheet(w) }} />
+      : <div className="card" key={w.id} style={{ margin: 0, padding: 14 }}>
+        <div className="row between" style={{ gap: 8 }}><div><div className="tt">{w.name}</div><div className="ss">{setsDone(w)} sets · {fmtVol(w.vol, st.unit)}</div></div><span className="tag" style={{ color: 'var(--green)' }}>{t('Completed')}</span></div>
+        <div style={{ marginTop: 10 }}>{(w.entries || []).map((entry, i) => {
+          const ex = exOr(entry.id)
+          const values = (entry.sets || []).filter(set => set.done).map(set => setLabel(entry.id, set, entry.target)).join(' · ')
+          return <div key={`${entry.id}-${i}`} style={{ padding: '7px 0', borderTop: '1px solid var(--sep)' }}><div className="small capitalize" style={{ fontWeight: 600 }}>{ex.n}</div><div className="ss">{values || t('no sets')}</div></div>
+        })}</div>
+        <Button variant="tinted" icon="list" style={{ marginTop: 8, width: '100%' }} onClick={() => { close(); workoutDetailSheet(w) }}>View session</Button>
+      </div>)}</div>}
     <div className="list">{ids.map(id => {
       const r = st.routines.find(x => x.id === id)
       return r && <div className="item" key={id} onClick={() => { close(); routinePreviewSheet(id) }}>

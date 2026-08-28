@@ -15,6 +15,24 @@ import { coachAvailable, hasConsent } from '../lib/coach.js'
 import { forgetCoach } from '../lib/coach-api.js'
 import Icon from '../components/Icon.jsx'
 import { Section, Row, SelectRow, Switch, Segmented, Button, TextField } from '../components/ui.jsx'
+import { applyReviewedPlan, compareReviewedBackup, restoreReviewedPlan, snapshotPlan, validateReviewedBackup } from '../lib/backup-review.js'
+
+const PLAN_RECOVERY_KEY = 'gym_reviewed_plan_recovery'
+
+function ReviewedBackupSheet({ current, incoming, preview, close, apply }) {
+  return <>
+    <h3>Review plan update</h3>
+    <p className="small muted">Only routines and planning data will change. Completed workouts, body weight, preferences and account data will be preserved.</p>
+    <div className="list" style={{ margin: '12px 0' }}>
+      {preview.sections.map(section => <div className="item" key={section.key} style={{ alignItems: 'flex-start' }}>
+        <Icon name="check" style={{ color: 'var(--green)', marginTop: 2 }} />
+        <div className="grow"><div className="tt">{section.label}</div><div className="ss">{section.summary}</div>
+          {!!section.details.length && <div className="dim" style={{ fontSize: '.7rem', marginTop: 4 }}>{section.details.join(' · ')}</div>}</div>
+      </div>)}
+    </div>
+    <div className="row" style={{ gap: 8 }}><Button style={{ flex: 1 }} onClick={close}>Cancel</Button><Button variant="primary" style={{ flex: 1 }} onClick={() => apply(current, incoming, close)}>Apply plan changes</Button></div>
+  </>
+}
 
 export default function Settings() {
   const nav = useNavigate()
@@ -24,8 +42,10 @@ export default function Settings() {
   const { update, replaceState, setUser, pullState, pushState, signOut, signOutAll, resetDemo } = useStore()
   const toast = useUI(s => s.toast)
   const fileRef = useRef(null)
+  const reviewRef = useRef(null)
   const importRef = useRef(null)
   const wakeOK = wakeLockSupported()
+  const [hasPlanRecovery, setHasPlanRecovery] = useState(() => !!localStorage.getItem(PLAN_RECOVERY_KEY))
 
   const doExport = async () => {
     const json = JSON.stringify(S, null, 2)
@@ -39,18 +59,55 @@ export default function Settings() {
     const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; a.click(); URL.revokeObjectURL(a.href)
     toast(t('Backup exported'))
   }
-  const doImport = ev => {
+  const doReviewImport = ev => {
     const f = ev.target.files[0]; if (!f) return
+    ev.target.value = ''
+    if (f.size > 5 * 1024 * 1024) return toast(t('Import failed: {0}', 'file is larger than 5 MB'))
     const rd = new FileReader()
     rd.onload = () => {
       try {
         const data = JSON.parse(rd.result)
-        if (!data.workouts || !data.routines) throw new Error('not an openGym backup')
+        const valid = validateReviewedBackup(data)
+        if (!valid.ok) throw new Error(valid.errors.join(' '))
+        const preview = compareReviewedBackup(S, data)
+        if (!preview.changed) return toast('No plan changes found in this backup')
+        useUI.getState().openSheet(close => <ReviewedBackupSheet current={S} incoming={data} preview={preview} close={close}
+          apply={(current, incoming, done) => {
+            localStorage.setItem(PLAN_RECOVERY_KEY, JSON.stringify(snapshotPlan(current)))
+            update(next => applyReviewedPlan(next, incoming))
+            setHasPlanRecovery(true)
+            done(); nav('/plan'); toast('Reviewed plan changes applied')
+          }} />)
+      } catch (e) { toast(t('Import failed: {0}', e.message)) }
+    }
+    rd.readAsText(f)
+  }
+  const doImport = ev => {
+    const f = ev.target.files[0]; if (!f) return
+    ev.target.value = ''
+    const rd = new FileReader()
+    rd.onload = () => {
+      try {
+        const data = JSON.parse(rd.result)
+        if (!data.workouts || !data.routines) throw new Error('not an OpenGym backup')
         confirmSheet({ title: t('Import backup?'), message: t('This replaces all current data with the backup file.'), confirmText: t('Import'), danger: true, onConfirm: () => { replaceState(Object.assign(JSON.parse(JSON.stringify(DEF)), data), true); toast(t('Backup imported')) } })
       } catch (e) { toast(t('Import failed: {0}', e.message)) }
     }
     rd.readAsText(f)
   }
+  const restorePlan = () => confirmSheet({
+    title: 'Restore plan from before the last import?',
+    message: 'Routines and planning will be restored. Workouts logged since then will be kept.',
+    confirmText: 'Restore plan',
+    onConfirm: () => {
+      try {
+        const saved = JSON.parse(localStorage.getItem(PLAN_RECOVERY_KEY))
+        update(next => restoreReviewedPlan(next, saved))
+        localStorage.removeItem(PLAN_RECOVERY_KEY); setHasPlanRecovery(false)
+        nav('/plan'); toast('Previous plan restored')
+      } catch { toast('The plan recovery copy could not be read') }
+    }
+  })
   const signInHere = async () => {
     try { const u = await passkeyLogin(); setUser(u); await pullState(); toast(t('Welcome back, {0}', u.name)) }
     catch (e) { if (e.name !== 'NotAllowedError' && e.name !== 'AbortError') toast(e.message || t('Sign-in failed')) }
@@ -194,13 +251,16 @@ export default function Settings() {
       <Row icon="shuffle" iconTint="var(--teal)" title={t('Import from another app')}
         subtitle={t('FitNotes, Strong, Hevy — or body weight from Apple Health')}
         accessory="chevron" onClick={() => importRef.current.click()} />
-      <Row icon="upload" iconTint="var(--blue)" title={t('Import backup')} accessory="chevron" onClick={() => fileRef.current.click()} />
+      <Row icon="sparkles" iconTint="var(--acc)" title="Review plan update (JSON)" subtitle="Compare routine and schedule changes before applying" accessory="chevron" onClick={() => reviewRef.current.click()} />
+      <Row icon="upload" iconTint="var(--blue)" title={t('Import backup')} subtitle="Replace all OpenGym data for disaster recovery" accessory="chevron" onClick={() => fileRef.current.click()} />
+      {hasPlanRecovery && <Row icon="reset" iconTint="var(--orange)" title="Restore plan before last reviewed import" subtitle="Keeps workouts logged since the import" accessory="chevron" onClick={restorePlan} />}
       <Row icon="download" iconTint="var(--blue)" title={t('Export backup (JSON)')} accessory="chevron" onClick={doExport} />
       {/* Also drops anything the Coach is holding server-side: a wipe that leaves a pending
           proposal on the server behind would be a wipe in name only. */}
       <Row icon="trash" iconTint="var(--red)" title={t('Reset everything')} danger onClick={() => confirmSheet({ title: t('Reset everything?'), message: t('Deletes your plan, workouts and body weight on this device. This cannot be undone.'), confirmText: t('Delete everything'), danger: true, onConfirm: () => { if (user) forgetCoach().catch(() => {}); replaceState(JSON.parse(JSON.stringify(DEF)), true); nav('/home'); toast(t('All data reset')) } })} />
     </Section>
     <input ref={fileRef} type="file" accept=".json,application/json" style={{ display: 'none' }} onChange={doImport} />
+    <input ref={reviewRef} type="file" accept=".json,application/json" style={{ display: 'none' }} onChange={doReviewImport} />
     {/* Reset after reading so picking the same file twice still fires onChange. */}
     <input ref={importRef} type="file" accept=".csv,.xml,text/csv,text/xml" style={{ display: 'none' }}
       onChange={ev => { const f = ev.target.files[0]; if (f) importFromApp(f); ev.target.value = '' }} />
