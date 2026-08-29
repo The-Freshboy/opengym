@@ -128,7 +128,9 @@ function BwSheet({ required, onDone, close }) {
   </>
 }
 export function bwSheet(opts = {}) {
-  const h = ui().openSheet(close => <BwSheet {...opts} close={close} />, { locked: !!opts.required })
+  // A pre-workout weigh-in is optional, so the user must always be able to
+  // dismiss this sheet without starting or changing a workout.
+  const h = ui().openSheet(close => <BwSheet {...opts} close={close} />)
   return h
 }
 
