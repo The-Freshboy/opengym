@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Removed all third-party exercise pictures and animations from the app, deployment, mobile
+  build, service worker, screenshots and media downloader. The exercise library now uses the
+  built-in neutral exercise icon while retaining the MIT-licensed text and structured data.
+
 ### The AI Coach
 
 openGym could always progress a plan. It could never *write* one, and it never looked at the
@@ -329,9 +333,6 @@ A muscle map across the app, and a live demo you can try without installing anyt
   into guest mode with a seeded example profile (12 weeks of Push/Pull/Legs, weigh-ins, PRs) so
   every screen has something to show, and it never talks to a server. Passkeys, sync and the admin
   dashboard stay exclusive to self-hosted instances, which is where the backend lives.
-- 🖼️ Builds can point the exercise media elsewhere via `VITE_IMG_BASE` / `VITE_GIF_BASE` — the demo
-  serves the ~140 MB dataset from a CDN instead of shipping it. The default (`img/` and `gif/` next
-  to the app) is unchanged.
 
 ## v1.2.0 — 2026-07-23
 

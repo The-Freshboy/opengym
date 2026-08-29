@@ -47,7 +47,6 @@ No account on someone else's server, no subscription, no ads. Just `docker compo
 <table>
 <tr>
 <td align="center"><img src="assets/screenshots/home.png" alt="Home" width="230"><br><sub><b>Home</b> — today's workout & weight</sub></td>
-<td align="center"><img src="assets/screenshots/workout.png" alt="Workout" width="230"><br><sub><b>Guided workout</b> — animated demos & sets</sub></td>
 <td align="center"><img src="assets/screenshots/stats.png" alt="Stats" width="230"><br><sub><b>Stats</b> — heatmap, charts & PRs</sub></td>
 </tr>
 </table>
@@ -110,10 +109,9 @@ docker compose pull   # grab prebuilt images (amd64 + arm64) — skip to build f
 docker compose up -d
 ```
 
-Open **http://localhost:8080**, tap **Create profile**, and you're in. First launch downloads
-the exercise media (~140 MB) once. Prefer building the images yourself instead of pulling from
-`ghcr.io`? Drop the `pull` step and run `docker compose up -d --build` — you don't need Node or
-a build step locally either way.
+Open **http://localhost:8080**, tap **Create profile**, and you're in. Prefer building the container
+images yourself instead of pulling from `ghcr.io`? Drop the `pull` step and run
+`docker compose up -d --build` — you don't need Node or a build step locally either way.
 
 > Want it reachable from your phone over the internet with passkeys? You'll need an HTTPS
 > domain — a two-line change in `.env`. See **[docs/SELF_HOSTING.md](docs/SELF_HOSTING.md)**.
@@ -234,4 +232,4 @@ top of the page is there — a star, a bug report or a PR is worth just as much.
 if you run a modified version as a network service, you must offer that version's source under
 the same license. Nobody can turn openGym into a closed, proprietary product.
 
-Exercise images/GIFs are fetched from the upstream dataset and keep their own terms — see [NOTICE.md](NOTICE.md).
+Third-party exercise pictures and animations are not distributed by openGym. Exercise text and metadata retain their upstream MIT notice — see [NOTICE.md](NOTICE.md).

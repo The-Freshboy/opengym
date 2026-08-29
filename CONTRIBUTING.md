@@ -10,7 +10,6 @@ frontend/  React + Vite app (src/views, src/components, src/store, src/lib). Bui
            android/ + ios/ are the Capacitor shells for the standalone mobile app (docs/MOBILE.md).
 api/       backend — server.js (Node, no framework), one dependency (@simplewebauthn/server).
 web/       multi-stage Dockerfile (builds frontend → nginx) + nginx.conf (serves app, proxies /api).
-media/     exercise img/gif (gitignored, fetched at runtime).
 docs/      self-hosting guide.
 ```
 

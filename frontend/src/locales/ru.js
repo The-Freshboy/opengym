@@ -203,7 +203,6 @@ export default {
   'Delete routine?': 'Удалить программу?',
   '“{0}” and its exercises will be removed.': '«{0}» и её упражнения будут удалены.',
   'Delete routine': 'Удалить программу',
-  '{0} exercises with animations': '{0} упражнений с анимациями',
   'Search…': 'Поиск…',
   'No workouts yet.': 'Тренировок пока нет.',
   'Starter plan loaded — Mon Push · Wed Pull · Fri Legs': 'Стартовый план загружен — Пн Push · Ср Pull · Пт Ноги',
@@ -332,9 +331,7 @@ export default {
   // --- custom exercises (#11) ---
   'Create your own exercise': 'Создать своё упражнение',
   'Edit custom exercise': 'Изменить своё упражнение',
-  'Name it and pick a body part — it behaves like any other exercise, just without an animation.': 'Задайте название и выберите часть тела — оно работает как любое другое упражнение, только без анимации.',
   'Exercise name': 'Название упражнения',
-  'name + body part, no animation': 'название + часть тела, без анимации',
   'Create exercise': 'Создать упражнение',
   'Give it a name': 'Задайте название',
   'Pick a body part': 'Выберите часть тела',

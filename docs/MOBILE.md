@@ -8,7 +8,7 @@ openGym ships in two flavors from the same codebase:
 | Accounts | passkey sign-in, one profile per person | none — the phone *is* the account |
 | Data | synced to your server, readable on desktop | stays on the device (file in the app's private storage) |
 | Reminders | Web Push from your server | native local notifications, no server involved |
-| Exercise media | served by your server (`img/`, `gif/`) | loaded from the jsDelivr CDN |
+| Exercise media | not bundled | not bundled |
 
 The mobile flavor never talks to a backend: no sign-in screen, no sync, no telemetry.
 State is mirrored from `localStorage` into `opengym-state.json` in the app's private data

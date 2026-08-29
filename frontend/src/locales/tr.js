@@ -203,7 +203,6 @@ export default {
   'Delete routine?': 'Rutin silinsin mi?',
   '“{0}” and its exercises will be removed.': '“{0}” ve egzersizleri kaldırılacak.',
   'Delete routine': 'Rutini sil',
-  '{0} exercises with animations': 'animasyonlu {0} egzersiz',
   'Search…': 'Ara…',
   'No workouts yet.': 'Henüz antrenman yok.',
   'Starter plan loaded — Mon Push · Wed Pull · Fri Legs': 'Başlangıç planı yüklendi — Pzt Push · Çar Pull · Cum Bacak',
@@ -332,9 +331,7 @@ export default {
   // --- custom exercises (#11) ---
   'Create your own exercise': 'Kendi egzersizini oluştur',
   'Edit custom exercise': 'Özel egzersizi düzenle',
-  'Name it and pick a body part — it behaves like any other exercise, just without an animation.': 'Bir ad ver ve bölge seç — animasyon dışında diğer egzersizler gibi çalışır.',
   'Exercise name': 'Egzersiz adı',
-  'name + body part, no animation': 'ad + vücut bölgesi, animasyonsuz',
   'Create exercise': 'Egzersiz oluştur',
   'Give it a name': 'Bir ad ver',
   'Pick a body part': 'Bir vücut bölgesi seç',

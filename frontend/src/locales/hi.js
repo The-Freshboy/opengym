@@ -203,7 +203,6 @@ export default {
   'Delete routine?': 'रूटीन हटाएँ?',
   '“{0}” and its exercises will be removed.': '"{0}" और उसके व्यायाम हटा दिए जाएँगे।',
   'Delete routine': 'रूटीन हटाएँ',
-  '{0} exercises with animations': 'एनिमेशन के साथ {0} व्यायाम',
   'Search…': 'खोजें…',
   'No workouts yet.': 'अभी कोई वर्कआउट नहीं।',
   'Starter plan loaded — Mon Push · Wed Pull · Fri Legs': 'स्टार्टर प्लान लोड हुआ — सोम पुश · बुध पुल · शुक्र लेग्स',
@@ -332,9 +331,7 @@ export default {
   // --- custom exercises (#11) ---
   'Create your own exercise': 'अपनी एक्सरसाइज़ बनाएं',
   'Edit custom exercise': 'कस्टम एक्सरसाइज़ संपादित करें',
-  'Name it and pick a body part — it behaves like any other exercise, just without an animation.': 'नाम दें और बॉडी पार्ट चुनें — यह बाकी एक्सरसाइज़ की तरह ही काम करती है, बस एनिमेशन नहीं होता।',
   'Exercise name': 'एक्सरसाइज़ का नाम',
-  'name + body part, no animation': 'नाम + बॉडी पार्ट, बिना एनिमेशन',
   'Create exercise': 'एक्सरसाइज़ बनाएं',
   'Give it a name': 'कोई नाम दें',
   'Pick a body part': 'एक बॉडी पार्ट चुनें',

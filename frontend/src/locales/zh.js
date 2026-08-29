@@ -203,7 +203,6 @@ export default {
   'Delete routine?': '删除训练日？',
   '“{0}” and its exercises will be removed.': '“{0}”及其动作将被移除。',
   'Delete routine': '删除训练日',
-  '{0} exercises with animations': '{0} 个带动画的动作',
   'Search…': '搜索…',
   'No workouts yet.': '还没有训练。',
   'Starter plan loaded — Mon Push · Wed Pull · Fri Legs': '入门计划已加载——周一推 · 周三拉 · 周五腿',
@@ -332,9 +331,7 @@ export default {
   // --- custom exercises (#11) ---
   'Create your own exercise': '创建自己的动作',
   'Edit custom exercise': '编辑自定义动作',
-  'Name it and pick a body part — it behaves like any other exercise, just without an animation.': '起个名字并选择身体部位——它和其他动作一样使用，只是没有动画。',
   'Exercise name': '动作名称',
-  'name + body part, no animation': '名称 + 身体部位，无动画',
   'Create exercise': '创建动作',
   'Give it a name': '请输入名称',
   'Pick a body part': '请选择身体部位',

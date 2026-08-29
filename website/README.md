@@ -5,7 +5,7 @@ served by nginx.
 
 Not in this folder (added at deploy time):
 
-- `img/` — the five screenshots from `../assets/screenshots/` plus `banner.png`
+- `img/` — the three media-free screenshots from `../assets/screenshots/` plus `banner.png`
 - `icon-180.png` / `icon-512.png` — copied from `../frontend/public/` (the same
   icons the PWA uses, so the browser tab, home screen and app all match)
 - `openGym.apk` — the signed release build (see `../docs/MOBILE.md`)

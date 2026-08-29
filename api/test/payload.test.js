@@ -12,7 +12,7 @@ test('payload never carries identity, credentials or device data', () => {
   const S = sampleState({
     // Everything below is either private, irrelevant to coaching, or both — and all of it is
     // realistically present in a live state blob.
-    theme: 'dark', accent: 'lime', body: 'male', gifSize: 'full',
+    theme: 'dark', accent: 'lime', body: 'male', mediaSize: 'full',
     reminder: { on: true, time: '08:00', tz: 'Europe/Lisbon' },
     _ts: Date.now()
   });
@@ -21,7 +21,7 @@ test('payload never carries identity, credentials or device data', () => {
 
   assert.ok(!json.includes('user-abc-123'), 'the uid must never appear');
   assert.equal(p.meta.profile.length, 16, 'an opaque handle stands in for the uid');
-  for (const forbidden of ['theme', 'accent', 'gifSize', 'reminder', 'Europe/Lisbon', 'passkey', 'credential', 'subscription', 'invite']) {
+  for (const forbidden of ['theme', 'accent', 'mediaSize', 'reminder', 'Europe/Lisbon', 'passkey', 'credential', 'subscription', 'invite']) {
     assert.ok(!json.includes(forbidden), `payload leaked ${forbidden}`);
   }
 });

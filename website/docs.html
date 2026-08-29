@@ -57,7 +57,7 @@
     between you and an open-source app. The APK is signed; updates install over the old
     version and keep your data.</div>
   <p>Everything is stored on the phone itself. The only things fetched from the internet are
-     the exercise images and animations (from a CDN, on demand).</p>
+     exercise text and structured movement data.</p>
 
   <h2 id="iphone">Use on iPhone</h2>
   <p>Apple does not allow installing apps outside the App Store, so there is no iOS download —
@@ -84,7 +84,7 @@ cp .env.example .env
 docker compose pull    # prebuilt images (amd64 + arm64) — skip to build from source
 docker compose up -d</code></pre>
   <p>Open <code>http://localhost:8080</code>, tap <b>Create profile</b>, and you're in. The
-     first launch downloads the exercise media (~140&nbsp;MB) once.</p>
+     third-party exercise media is not downloaded or distributed.</p>
   <div class="note">Want it reachable from your phone with passkeys? You'll need an HTTPS
     domain — a two-line change in <code>.env</code>. The full guide, including reverse-proxy
     examples and the invite-only/admin options, is in
@@ -138,8 +138,8 @@ docker compose up -d</code></pre>
      own hardware, synced across devices, with profiles for the people you train with: self-host.
      You can start with the app and move to a server later — the backup file migrates everything.</p>
   <h3>Where does the exercise database come from?</h3>
-  <p>From <a href="https://github.com/hasaneyldrm/exercises-dataset" rel="noopener">hasaneyldrm/exercises-dataset</a>
-     (CC-licensed): 1,324 exercises with animations and instructions in 10 languages.</p>
+  <p>Text and metadata from <a href="https://github.com/hasaneyldrm/exercises-dataset" rel="noopener">hasaneyldrm/exercises-dataset</a>
+     under its MIT licence: 1,324 exercises with instructions in 10 languages. Third-party pictures and animations are not distributed.</p>
 </main>
 
 <footer><div class="wrap foot">

@@ -203,7 +203,6 @@ export default {
   'Delete routine?': 'Supprimer la routine ?',
   '“{0}” and its exercises will be removed.': '« {0} » et ses exercices seront supprimés.',
   'Delete routine': 'Supprimer la routine',
-  '{0} exercises with animations': '{0} exercices avec animations',
   'Search…': 'Rechercher…',
   'No workouts yet.': 'Aucune séance pour l’instant.',
   'Starter plan loaded — Mon Push · Wed Pull · Fri Legs': 'Plan de départ chargé — Lun Push · Mer Pull · Ven Jambes',
@@ -332,9 +331,7 @@ export default {
   // --- custom exercises (#11) ---
   'Create your own exercise': 'Créer votre propre exercice',
   'Edit custom exercise': 'Modifier l’exercice personnalisé',
-  'Name it and pick a body part — it behaves like any other exercise, just without an animation.': 'Nommez-le et choisissez une partie du corps — il se comporte comme tout autre exercice, mais sans animation.',
   'Exercise name': 'Nom de l’exercice',
-  'name + body part, no animation': 'nom + partie du corps, sans animation',
   'Create exercise': 'Créer l’exercice',
   'Give it a name': 'Donnez-lui un nom',
   'Pick a body part': 'Choisissez une partie du corps',
