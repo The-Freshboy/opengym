@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useStore } from './store/useStore.js'
 import { useUI } from './store/useUI.js'
 import { EXDB, EXIDX, BODYPARTS, isCardio, cardioHasSpeed, allExercises, equipmentOf, exOr } from './lib/exercises.js'
-import { fmtDate, fmtNum, fmtVol, fmtDur, durPart, todayISO, isoOf, uid, exCount, DAYN, MONTHS_LONG, ACCENTS } from './lib/format.js'
+import { fmtDate, fmtNum, fmtVol, fmtDur, durPart, todayISO, isoOf, weekKey, uid, exCount, DAYN, MONTHS_LONG, ACCENTS } from './lib/format.js'
 import { lastEntryFor, bestWeightFor, buildSets, effectiveRoutineIds, movePlannedRoutine, routineIds, setDayRoutineIds, workoutVolume, setsDone, setsDoneActive, lastBW, supersetUnits, unitOf, setLabel, defaultConfig, cleanupSg, modeOf, effortOf, exLine, sessionLoadLabel } from './lib/history.js'
 import { beep, vibrate } from './lib/sound.js'
 import { t, instrFor, getLang, INSTR_LANGS } from './lib/i18n.js'
@@ -969,7 +969,7 @@ function Calendar({ start, close }) {
       close(); ui().openSheet(c2 => <><h3>{fmtDate(iso, true)}</h3><div className="list">{ws.map(w => <WorkoutRow key={w.id} w={w} onClick={() => { c2(); workoutDetailSheet(w) }} />)}</div></>)
     }}><span>{d}</span><i className={dotCls} /></button>)
   }
-  return <>
+  return <div className="calendar-sheet">
     <div className="row between" style={{ marginBottom: 2 }}>
       <button className="iconbtn" onClick={() => setCur(new Date(y, mo - 1, 1))} aria-label="Previous month"><Icon name="chevronLeft" /></button>
       <h3 style={{ margin: 0 }}>{t(MONTHS_LONG[mo])} {y}</h3>
@@ -984,7 +984,7 @@ function Calendar({ start, close }) {
       <span><i style={{ background: 'var(--orange)' }} />{t('Rescheduled')}</span>
     </div>
     <div className="small dim" style={{ textAlign: 'center', marginTop: 10 }}>{t('Tap a trained day for details · tap any other day to plan a session')}</div>
-  </>
+  </div>
 }
 export const calendarSheet = start => S().calendarView === 'agenda' ? agendaSheet() : ui().openSheet(close => <Calendar start={start} close={close} />)
 
@@ -996,20 +996,32 @@ function Agenda({ close }) {
   const dates = []
   const start = new Date(); start.setDate(start.getDate() - 7)
   for (let i = 0; i < 29; i++) { const d = new Date(start); d.setDate(start.getDate() + i); dates.push(isoOf(d)) }
+  const rows = dates.map(iso => {
+    const rawDone = st.workouts.filter(w => w.d === iso)
+    const done = rawDone.filter(w => w.kind === 'activity' ? filters.includes('activities') : filters.includes('completed'))
+    const completedRoutineIds = new Set(rawDone.map(w => w.routineId).filter(Boolean))
+    const showPlan = iso < todayISO() ? filters.includes('missed') : filters.includes('planned')
+    const planned = showPlan ? effectiveRoutineIds(st, iso).filter(id => !completedRoutineIds.has(id)).map(id => st.routines.find(r => r.id === id)).filter(Boolean) : []
+    return done.length || planned.length ? { iso, done, planned } : null
+  }).filter(Boolean)
+  const weekHeading = iso => {
+    const key = weekKey(iso), current = weekKey(todayISO())
+    const monday = new Date(iso + 'T12:00:00'); monday.setDate(monday.getDate() - ((monday.getDay() + 6) % 7))
+    const sunday = new Date(monday); sunday.setDate(monday.getDate() + 6)
+    const diff = Math.round((new Date(key + 'T12:00:00') - new Date(current + 'T12:00:00')) / 604800000)
+    const title = diff === 0 ? t('This week') : diff === -1 ? t('Last week') : diff === 1 ? t('Next week') : t('Week of {0}', fmtDate(isoOf(monday), true))
+    return { key, title, range: `${fmtDate(isoOf(monday), true)} – ${fmtDate(isoOf(sunday), true)}` }
+  }
   return <><div className="row between"><h3>{t('Agenda')}</h3><Button size="sm" icon="calendar" onClick={() => { update(s => { s.calendarView = 'month' }); close(); ui().openSheet(c => <Calendar close={c} />) }}>{t('Month')}</Button></div>
     <div className="chips" style={{ marginBottom: 10 }}>{[['completed', 'Completed'], ['planned', 'Planned'], ['activities', 'Activities'], ['missed', 'Missed']].map(([id, label]) => <button key={id} className={'chip' + (filters.includes(id) ? ' on' : '')} onClick={() => toggleFilter(id)}>{t(label)}</button>)}</div>
-    <div className="list">{dates.map(iso => {
-      const rawDone = st.workouts.filter(w => w.d === iso)
-      const done = rawDone.filter(w => w.kind === 'activity' ? filters.includes('activities') : filters.includes('completed'))
-      // Filtering completed cards must not turn an already-finished routine into a missed one.
-      const completedRoutineIds = new Set(rawDone.map(w => w.routineId).filter(Boolean))
-      const isPast = iso < todayISO()
-      const showPlan = isPast ? filters.includes('missed') : filters.includes('planned')
-      const planned = showPlan ? effectiveRoutineIds(st, iso).filter(id => !completedRoutineIds.has(id)).map(id => st.routines.find(r => r.id === id)).filter(Boolean) : []
-      if (!done.length && !planned.length) return null
-      return <div key={iso} style={{ marginBottom: 14 }}><div className="small muted" style={{ margin: '0 4px 5px' }}>{fmtDate(iso, true)}</div>
-        {done.map(w => <WorkoutRow key={w.id} w={w} onClick={() => { close(); workoutDetailSheet(w) }} />)}
-        {planned.map(r => <div key={r.id} className="item" onClick={() => { close(); plannedDaySheet(iso) }}><span className="lrow-i"><Icon name={glyphOf(r.emoji)} /></span><div className="grow"><div className="tt">{r.name}</div><div className="ss">{t('Planned')}</div></div><Icon name="chevronRight" className="chev" /></div>)}
+    <div className="agenda-list">{rows.map((row, i) => {
+      const week = weekHeading(row.iso), previous = i ? weekHeading(rows[i - 1].iso).key : null
+      return <div key={row.iso}>
+        {week.key !== previous && <div className="agenda-week"><div>{week.title}</div><span>{week.range}</span></div>}
+        <div className="agenda-day"><div className="small muted">{fmtDate(row.iso, true)}</div>
+          <div className="list">{row.done.map(w => <WorkoutRow key={w.id} w={w} onClick={() => { close(); workoutDetailSheet(w) }} />)}
+          {row.planned.map(r => <div key={r.id} className="item" onClick={() => { close(); plannedDaySheet(row.iso) }}><span className="lrow-i"><Icon name={glyphOf(r.emoji)} /></span><div className="grow"><div className="tt">{r.name}</div><div className="ss">{t('Planned')}</div></div><Icon name="chevronRight" className="chev" /></div>)}</div>
+        </div>
       </div>
     })}</div></>
 }

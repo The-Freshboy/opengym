@@ -3,7 +3,8 @@ import { useNavigate } from 'react-router-dom'
 import { useStore } from '../store/useStore.js'
 import { expandedRecords, insightSummary, readinessAdvice } from '../lib/insights.js'
 import { todayISO } from '../lib/format.js'
-import { Button, NumberField, Section, TextField } from '../components/ui.jsx'
+import { Button, Section, TextField } from '../components/ui.jsx'
+import Stepper from '../components/Stepper.jsx'
 import Icon from '../components/Icon.jsx'
 
 export default function Insights() {
@@ -20,7 +21,7 @@ export default function Insights() {
     {!!records.length && <Section title="Personal records">{records.map(r => <div className="card row between" key={r.type} style={{ marginBottom: 8 }}><div><b>{r.type}</b><div className="small dim">{r.date}</div></div><strong className="accent">{r.value}</strong></div>)}</Section>}
     <Section title="Training blocks">
       {blocks.map(b => <div className="card" key={b.id} style={{ marginBottom: 8 }}><b>{b.name}</b><div className="small dim">{b.weeks} weeks · started {b.start}{b.goal ? ` · ${b.goal}` : ''}</div></div>)}
-      <div className="card"><TextField value={block.name} onChange={e => setBlock({ ...block, name: e.target.value })} placeholder="Block name" /><div style={{ height: 8 }} /><TextField value={block.goal} onChange={e => setBlock({ ...block, goal: e.target.value })} placeholder="Goal (optional)" /><div style={{ height: 10 }} /><div className="row between"><span>Weeks</span><NumberField value={block.weeks} decimal={false} onChange={weeks => setBlock({ ...block, weeks: Math.min(16, Math.max(1, weeks)) })} /></div><div style={{ height: 10 }} /><Button variant="primary" onClick={addBlock}>Start training block</Button></div>
+      <div className="card training-block-form"><TextField value={block.name} onChange={e => setBlock({ ...block, name: e.target.value })} placeholder="Block name" /><TextField value={block.goal} onChange={e => setBlock({ ...block, goal: e.target.value })} placeholder="Goal (optional)" /><Stepper label="Weeks" value={block.weeks} min={1} max={16} decimal={false} onChange={weeks => setBlock({ ...block, weeks: Math.min(16, Math.max(1, weeks)) })} /><Button variant="primary" onClick={addBlock}>Start training block</Button></div>
     </Section>
     <Button onClick={() => nav('/stats')}>Detailed charts and records</Button>
   </div>

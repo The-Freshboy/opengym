@@ -857,6 +857,22 @@ h4.sec{
 .cal-d i.ovr{background:var(--orange)}
 .cal-legend{display:flex;gap:14px;justify-content:center;margin-top:12px;font-size:12px;color:var(--label-3)}
 .cal-legend i{display:inline-block;width:6px;height:6px;border-radius:50%;margin-right:5px}
+.calendar-sheet .cal-d{aspect-ratio:auto;height:clamp(38px,7dvh,58px)}
+.sheet:has(.calendar-sheet){max-height:calc(100dvh - 8px);scrollbar-width:thin}
+.training-block-form{display:flex;flex-direction:column;gap:12px}
+.training-block-form .stp-w{max-width:220px}
+.training-block-form .stp-l{text-align:left;font-size:15px;color:var(--label)}
+.agenda-week{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin:22px 4px 10px;padding-bottom:8px;border-bottom:1px solid var(--sep);font-size:17px;font-weight:600}
+.agenda-week:first-child{margin-top:14px}
+.agenda-week span{font-size:12px;font-weight:400;color:var(--label-3);white-space:nowrap}
+.agenda-day{margin-bottom:16px}
+.agenda-day>.small{margin:0 4px 6px}
+
+@media (max-height:560px){
+  .calendar-sheet .cal-d{height:34px;border-radius:8px}
+  .calendar-sheet .cal-grid{gap:3px;margin-top:6px}
+  .calendar-sheet .cal-legend,.calendar-sheet>div:last-child{display:none}
+}
 
 /* --- accent swatches --- */
 .swatches{display:flex;gap:12px;flex-wrap:wrap}

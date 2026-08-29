@@ -8,7 +8,7 @@ import Icon from './Icon.jsx'
 function Sheet({ sheet }) {
   const { closeSheet } = useUI()
   const close = () => closeSheet(sheet.id)
-  const closeButton = !sheet.locked && <button className="sheet-close" onClick={close} aria-label="Close"><Icon name="x" /></button>
+  const closeButton = !sheet.locked && <button className="sheet-close" onClick={close} aria-label="Close"><Icon name="xmark" /></button>
   if (sheet.kind === 'center') {
     return (
       <div>
