@@ -305,11 +305,16 @@ export function validateReview(data, plan) {
         break;
       case 'week': {
         if (!isInt(target.weekday, 0, 6)) { errors.push(`${where}.target.weekday must be 0-6`); return; }
-        // null/'rest' clears the day; anything else has to be a routine that exists.
-        if (c.after != null && c.after !== 'rest' && !routines.has(c.after)) {
-          errors.push(`${where}.after must be a routine id from the plan, "rest", or null`); return;
+        // Arrays preserve multiple planned activities on a day. A scalar remains valid for
+        // old providers and single-routine days.
+        const ids = Array.isArray(c.after) ? [...new Set(c.after)] : null;
+        if (ids && (!ids.length || ids.length > 8 || ids.some(id => !routines.has(id)))) {
+          errors.push(`${where}.after must contain 1-8 routine ids from the plan`); return;
         }
-        out.after = c.after ?? null;
+        if (!ids && c.after != null && c.after !== 'rest' && !routines.has(c.after)) {
+          errors.push(`${where}.after must be a routine id, an array of routine ids, "rest", or null`); return;
+        }
+        out.after = ids || c.after || null;
         break;
       }
     }

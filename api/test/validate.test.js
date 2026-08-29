@@ -124,6 +124,8 @@ test('a week change may only schedule a routine that exists, rest, or nothing', 
   assert.equal(review([change({ type: 'week', target: { weekday: 6 }, after: null })]).ok, true);
   assert.equal(review([change({ type: 'week', target: { weekday: 9 }, after: 'r1' })]).ok, false);
   assert.equal(review([change({ type: 'week', target: { weekday: 6 }, after: 'ghost' })]).ok, false);
+  assert.equal(review([change({ type: 'week', target: { weekday: 6 }, after: ['r1', 'r2'] })]).ok, true);
+  assert.equal(review([change({ type: 'week', target: { weekday: 6 }, after: ['r1', 'ghost'] })]).ok, false);
 });
 
 test('"nothing to change" is a first-class answer, and so is an empty change list', () => {

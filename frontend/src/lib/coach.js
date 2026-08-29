@@ -133,7 +133,7 @@ export function markStale(proposal, S) {
       const cur = currentValue(S, c)
       // `before` is what the Coach saw. If the live plan disagrees, someone has already
       // changed it — applying would silently overwrite their edit with a stale premise.
-      if (cur !== undefined && c.before != null && cur !== c.before && cur !== null) stale = true
+      if (cur !== undefined && c.before != null && JSON.stringify(cur) !== JSON.stringify(c.before) && cur !== null) stale = true
     }
     return { ...c, status: stale ? 'stale' : (c.status === 'stale' ? 'proposed' : c.status || 'proposed') }
   })
@@ -329,7 +329,7 @@ const CHANGE_APPLY = {
   week: (s, c) => {
     const d = c.target.weekday
     if (c.after == null || c.after === 'rest') delete s.week[d]
-    else s.week[d] = c.after
+    else s.week[d] = Array.isArray(c.after) ? [...new Set(c.after)] : c.after
   }
 }
 export const CHANGE_TYPES = Object.keys(CHANGE_APPLY)

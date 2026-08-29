@@ -562,6 +562,7 @@ h4.sec{
 }
 .setrow .stp.w{flex:1.4;min-width:0}
 .setrow .stp.r{flex:1;min-width:0}
+.sethead.single .w-sp{flex:1;text-align:left;padding-left:8px}
 .setrow .stp.eff{flex:1.1;min-width:0}
 .setrow .stp button{width:32px;height:40px}
 /* a 3rd stepper (RIR) needs narrower buttons and a tighter row gap to fit next to weight+reps
@@ -651,6 +652,13 @@ h4.sec{
   animation:sheetup .34s var(--ease);
   overscroll-behavior:contain;touch-action:pan-y;will-change:transform;
 }
+.sheet-close{
+  position:sticky;top:0;z-index:4;float:right;width:36px;height:36px;margin:-2px 0 6px 10px;
+  display:grid;place-items:center;border:0;border-radius:50%;background:var(--surface-2);
+  color:var(--label-2);font-size:18px;cursor:pointer;touch-action:manipulation;
+}
+.sheet-close:active{transform:scale(.94);background:var(--surface-3)}
+.center{position:relative}
 :root[data-theme="light"] .sheet{background:var(--bg)}
 @keyframes sheetup{from{transform:translateY(100%)}to{transform:none}}
 .sheet .grab{width:36px;height:5px;border-radius:99px;background:var(--label-4);margin:6px auto 14px}

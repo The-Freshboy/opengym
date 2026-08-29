@@ -63,6 +63,7 @@ Prefer few, high-conviction changes over many small ones. Never propose more tha
 | `add-routine` | — | `{ name, emoji?, prog?, ex: [...] }` |
 | `remove-routine` | `routineId` | `null` |
 | `rename-routine` | `routineId` | new name |
-| `week` | `weekday` | routine id, `"rest"`, or `null` |
+| `week` | `weekday` | routine id, array of routine ids, `"rest"`, or `null` |
 
 `weight` may only appear on an exercise you are **adding** or **swapping in** — never for something they already train. Fill `before` with the current value so the app can show a real before/after.
+When a weekday already contains multiple routines, preserve every routine that should remain by returning the complete array for that day. Never replace one activity while silently dropping another.

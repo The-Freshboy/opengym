@@ -18,6 +18,14 @@ test('scientific review measures scheduled weekly volume and cites versioned evi
   assert.ok(r.sources.every(s => s.url.startsWith('https://')));
 });
 
+test('scientific review counts every routine on a multi-routine day', () => {
+  const p = payload();
+  p.plan.routines.push({ id: 'push-2', ex: [{ id: '0025', mode: 'reps', sets: 10 }] });
+  p.plan.week = { 1: ['push', 'push-2'] };
+  const r = scientificReview(p, new Date('2026-08-28T00:00:00Z'));
+  assert.equal(r.measurements.plannedByMuscle.pectorals.weeklySets, 20);
+});
+
 test('effort flag is based only on completed sets with logged RIR or RPE', () => {
   const sets = Array.from({ length: 8 }, (_, i) => ({ done: true, ...(i < 6 ? { rir: 1 } : { rir: 3 }) }));
   const r = scientificReview(payload({ window: { workouts: [{ d: '2026-08-27', entries: [{ id: '0025', sets }] }] } }), new Date('2026-08-28T00:00:00Z'));

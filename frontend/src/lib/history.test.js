@@ -59,6 +59,14 @@ describe('setLabel', () => {
     expect(setLabel(LIFT, { sec: 90, w: 20 }, { mode: 'time' })).toBe('1:30 · 20')
   })
 
+  it('omits speed for climbing while keeping cardio duration', async () => {
+    const { registerCustom } = await import('./exercises.js')
+    registerCustom([{ id: 'climb-test', n: 'Rock Climbing - Return Phase', bp: 'cardio' }])
+    expect(setLabel('climb-test', { min: 60, speed: 8 }, { id: 'climb-test', mode: 'cardio' })).toBe('60 min')
+    expect(exLine({ id: 'climb-test', mode: 'cardio', sets: 1, min: 60, speed: 8 }, 'kg')).toBe('1 × 60 min')
+    registerCustom([])
+  })
+
   it('reads a legacy set with no config exactly as before', () => {
     expect(setLabel(LIFT, { w: 0, r: 0 })).toBe('0×0')
     expect(setLabel(CARDIO, {})).toBe('0 min @ 0 km/h')

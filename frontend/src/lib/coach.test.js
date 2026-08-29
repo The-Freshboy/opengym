@@ -205,6 +205,13 @@ describe('applying changes', () => {
     expect(cleared.week[1]).toBeUndefined()
   })
 
+  it('preserves multiple routines when the Coach changes a weekday', () => {
+    const out = apply(state(), proposal([change({ type: 'week', target: { weekday: 2 }, before: null, after: ['r1', 'r2'] })]), ['c1'])
+    expect(out.week[2]).toEqual(['r1', 'r2'])
+    const marked = markStale(proposal([change({ type: 'week', target: { weekday: 2 }, before: ['r1', 'r2'], after: 'r1' })]), { ...out })
+    expect(marked.changes[0].status).toBe('proposed')
+  })
+
   it('never touches history, weigh-ins or settings', () => {
     const S = state({
       workouts: [{ id: 'w1', d: '2026-07-20', entries: [] }],

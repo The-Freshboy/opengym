@@ -10,7 +10,8 @@ const round = n => Math.round(n * 10) / 10;
 function plannedDose(plan) {
   const routines = new Map((plan?.routines || []).map(r => [r.id, r]));
   const out = {};
-  for (const rid of Object.values(plan?.week || {})) {
+  const scheduled = Object.values(plan?.week || {}).flatMap(v => [...new Set(Array.isArray(v) ? v : [v])]);
+  for (const rid of scheduled) {
     const r = routines.get(rid);
     for (const e of r?.ex || []) {
       if (e.mode === 'cardio') continue;
