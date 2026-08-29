@@ -67,9 +67,9 @@ describe('setLabel', () => {
     registerCustom([])
   })
 
-  it('shows session body weight instead of zero volume', async () => {
+  it('hides weight for bodyweight-only sessions', async () => {
     const { sessionLoadLabel } = await import('./history.js')
-    expect(sessionLoadLabel({ vol: 0, bw: 82.5 }, 'kg')).toBe('Body weight 82.5 kg')
+    expect(sessionLoadLabel({ vol: 0, bw: 82.5 }, 'kg')).toBe('')
     expect(sessionLoadLabel({ vol: 1200, bw: 82.5 }, 'kg')).toBe('1,200 kg')
   })
 

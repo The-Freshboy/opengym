@@ -17,12 +17,9 @@ export function modeOf(cfg) {
 }
 export const isTimed = cfg => modeOf(cfg) === 'time'
 
-// A zero lifted-volume session (climbing, mobility, timed bodyweight work) should show the
-// athlete's recorded session weight rather than the misleading "0 kg" used previously.
 export function sessionLoadLabel(w, unit = 'kg') {
   if (Number(w?.vol) > 0) return `${fmtNum(w.vol)} ${unit}`
-  if (Number(w?.bw) > 0) return `Body weight ${fmtNum(w.bw)} ${unit}`
-  return 'Bodyweight / no load'
+  return ''
 }
 
 // mm:ss for a work duration — seconds alone read badly past a minute ("90 s" vs "1:30").

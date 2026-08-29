@@ -113,7 +113,7 @@ export default function Home() {
           <div style={{ minWidth: 0 }}>
             <div className="lbl2">{t('Today')}</div>
             <div className="ttl">{S.active ? t('{0} — in progress', S.active.name) : todayDone.length > 1 ? `${todayDone.length} sessions completed` : todayWorkout ? todayWorkout.name : todayRoutineIds.length > 1 ? t('{0} activities', todayRoutineIds.length) : routine ? routine.name : t('Rest day')}{!todayDone.length && todayOvr && routine ? ' · ' + t('rescheduled') : ''}</div>
-            {todayWorkout && <div className="ss">{todayWorkout.kind === 'activity' ? `${todayWorkout.durationMin || Math.round(((todayWorkout.end || 0) - (todayWorkout.start || 0)) / 60000)} min · intensity ${todayWorkout.intensity}/10${todayWorkout.bw ? ` · Body weight ${fmtNum(todayWorkout.bw)} ${S.unit}` : ''}` : `${setsDone(todayWorkout)} sets · ${sessionLoadLabel(todayWorkout, S.unit)}`}</div>}
+            {todayWorkout && <div className="ss">{todayWorkout.kind === 'activity' ? `${todayWorkout.durationMin || Math.round(((todayWorkout.end || 0) - (todayWorkout.start || 0)) / 60000)} min · intensity ${todayWorkout.intensity}/10` : [`${setsDone(todayWorkout)} sets`, sessionLoadLabel(todayWorkout, S.unit)].filter(Boolean).join(' · ')}</div>}
           </div>
         </div>
         {S.active ? <span className="tag" style={{ color: 'var(--orange)', background: 'color-mix(in srgb,var(--orange) 16%,transparent)' }}>{t('Resume')}</span>
