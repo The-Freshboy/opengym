@@ -186,7 +186,7 @@ function finish(job, result) {
   cfgStore.logJob({
     at: new Date().toISOString(), uid: job.uid, kind: job.kind, trigger: job.trigger,
     outcome: result.outcome, errorClass: result.errorClass || null,
-    ms: Date.now() - job.startedAt, detail: result.detail || null
+    ms: Date.now() - job.startedAt, detail: result.detail || null, usage: result.usage || null
   });
   if (result.outcome === 'ready' && onProposal) {
     try { onProposal(job.uid, result.pending, job); } catch (e) { console.error('coach notify failed', e); }
@@ -249,12 +249,14 @@ async function execute(job) {
     if (!attempt.ok && attempt.repairable) {
       // One repair round, then done (FR-48). Two failures is a provider problem, not a
       // prompting problem, and a retry loop against a paid API is a bad way to find out.
+      const firstUsage = attempt.usage;
       attempt = await invoke(adapter, cfg, payload, jobDir, env, job, {
         previous: attempt.raw, errors: attempt.errors
       });
+      attempt.usage = addUsage(firstUsage, attempt.usage);
     }
     if (!attempt.ok) {
-      return finish(job, { outcome: 'failed', errorClass: attempt.errorClass, detail: attempt.detail });
+      return finish(job, { outcome: 'failed', errorClass: attempt.errorClass, detail: attempt.detail, usage: attempt.usage });
     }
     if (attempt.nochange) {
       // A manual scientific review still deserves a readable report even when the safest
@@ -270,9 +272,9 @@ async function execute(job) {
           changes: [], notes: [], science: payload.science,
           audit: { provider: cfg.provider, model: cfg.model || null, evidenceVersion: payload.science?.evidenceVersion || null }
         };
-        return finish(job, { outcome: 'ready', pending });
+        return finish(job, { outcome: 'ready', pending, usage: attempt.usage });
       }
-      return finish(job, { outcome: 'nochange', pending: null, detail: null });
+      return finish(job, { outcome: 'nochange', pending: null, detail: null, usage: attempt.usage });
     }
     const pending = {
       id: job.id,
@@ -285,15 +287,24 @@ async function execute(job) {
       audit: { provider: cfg.provider, model: cfg.model || null, evidenceVersion: payload.science?.evidenceVersion || null },
       ...attempt.result
     };
-    return finish(job, { outcome: 'ready', pending });
+    return finish(job, { outcome: 'ready', pending, usage: attempt.usage });
   } finally {
     fs.rmSync(jobDir, { recursive: true, force: true });
   }
 }
 
+function addUsage(first, second) {
+  if (!first && !second) return null;
+  return {
+    input_tokens: (first?.input_tokens || 0) + (second?.input_tokens || 0),
+    output_tokens: (first?.output_tokens || 0) + (second?.output_tokens || 0),
+    total_tokens: (first?.total_tokens || 0) + (second?.total_tokens || 0)
+  };
+}
+
 async function invoke(adapter, cfg, payload, jobDir, env, job, repair) {
   const prompt = buildPrompt(job.kind, payload, repair);
-  const r = await adapter.invoke({ cfg, prompt, jobDir, env, model: cfg.model || null, timeoutMs: TIMEOUT_MS });
+  const r = await adapter.invoke({ cfg, prompt, jobDir, env, model: cfg.model || null, timeoutMs: TIMEOUT_MS, safetyIdentifier: payload.profile });
 
   if (r.timedOut) return { ok: false, errorClass: 'timeout' };
   if (r.spawnError) return { ok: false, errorClass: 'missing', detail: r.stderr?.slice(0, 300) };
@@ -304,18 +315,18 @@ async function invoke(adapter, cfg, payload, jobDir, env, job, repair) {
   }
 
   const parsed = extractJSON(r.text);
-  if (parsed.error) return { ok: false, repairable: !repair, errors: [parsed.error], raw: r.text, errorClass: 'unusable' };
+  if (parsed.error) return { ok: false, repairable: !repair, errors: [parsed.error], raw: r.text, errorClass: 'unusable', usage: r.usage };
   if (!contractOK(parsed.value)) {
-    return { ok: false, repairable: !repair, errors: [`coach_contract must be ${payloadLib.CONTRACT}`], raw: r.text, errorClass: 'unusable' };
+    return { ok: false, repairable: !repair, errors: [`coach_contract must be ${payloadLib.CONTRACT}`], raw: r.text, errorClass: 'unusable', usage: r.usage };
   }
 
   const v = job.kind === 'review'
     ? validateReview(parsed.value, payload.plan)
     : validatePlan(parsed.value, { workingWeights: payload.history?.workingWeights, daysPerWeek: payload.coachProfile?.daysPerWeek });
 
-  if (!v.ok) return { ok: false, repairable: !repair, errors: v.errors, raw: r.text, errorClass: 'unusable' };
-  if (v.nochange) return { ok: true, nochange: true, reading: v.reading };
-  return { ok: true, result: v.proposal ? v.proposal : { bundle: v.bundle, summary: v.bundle.summary } };
+  if (!v.ok) return { ok: false, repairable: !repair, errors: v.errors, raw: r.text, errorClass: 'unusable', usage: r.usage };
+  if (v.nochange) return { ok: true, nochange: true, reading: v.reading, usage: r.usage };
+  return { ok: true, result: v.proposal ? v.proposal : { bundle: v.bundle, summary: v.bundle.summary }, usage: r.usage };
 }
 
 /**
@@ -370,7 +381,7 @@ export async function testRun() {
     const check = await adapter.check(cfg, env);
     if (!check.ok) return { ok: false, error: check.error || 'the provider runtime could not be run' };
     const r = await adapter.invoke({
-      cfg, jobDir, env, model: cfg.model || null, timeoutMs: 90000,
+      cfg, jobDir, env, model: cfg.model || null, timeoutMs: 90000, safetyIdentifier: 'opengym-coach-test',
       prompt: 'Reply with exactly this JSON object and nothing else: {"coach_contract":1,"ok":true}'
     });
     if (r.timedOut) return { ok: false, version: check.version, error: 'the provider did not answer in time' };

@@ -66,7 +66,7 @@ test('retired Gemini and Custom command configurations reset to unconfigured Cla
   });
   cfg.reset();
   const current = cfg.load();
-  assert.deepEqual(Object.keys(cfg.PROVIDERS).sort(), ['claude', 'codex', 'fixture']);
+  assert.deepEqual(Object.keys(cfg.PROVIDERS).sort(), ['claude', 'codex', 'fixture', 'openai']);
   assert.equal(current.provider, 'claude');
   assert.equal(current.auth, null);
   assert.equal(Object.hasOwn(current, 'customCommand'), false);
@@ -92,6 +92,18 @@ test('Codex uses its own ChatGPT CLI cache and never receives an API key', () =>
   assert.equal(env.HOME, '/tmp/jobdir', 'the agent has no access to the persistent cache through HOME');
   fs.unlinkSync(cfg.codexAuthFile());
   assert.equal(cfg.isConnected(), false, 'a removed Codex cache fails closed');
+});
+
+test('OpenAI API uses an encrypted production credential in the isolated job environment', () => {
+  cfg.save({ enabled: true, provider: 'openai', auth: null, model: null });
+  auth.setApiKey('sk-project-secret');
+  assert.equal(cfg.isConnected(), true);
+  const onDisk = fs.readFileSync(`${DIR}/coach.json`, 'utf8');
+  assert.ok(!onDisk.includes('sk-project-secret'));
+  const env = cfg.jobEnv('/tmp/jobdir');
+  assert.equal(env.OPENAI_API_KEY, 'sk-project-secret');
+  assert.deepEqual(Object.keys(env).sort(), ['HOME', 'OPENAI_API_KEY', 'PATH', 'TMPDIR']);
+  assert.equal(auth.authStatus().type, 'apikey');
 });
 
 test('legacy Claude credentials are disabled until replaced with a setup token', () => {

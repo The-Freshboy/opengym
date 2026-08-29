@@ -131,6 +131,10 @@ export default function AdminCoach() {
             onBlur={e => patch({ caps: { ...d.caps, instanceDaily: +e.target.value } })} /></label>
       </div>
       <div className="dim small" style={{ marginBottom: 10 }}>0 = no limit. Every job is one session on your provider account.</div>
+      {d.provider === 'openai' && <div className="small muted" style={{ marginBottom: 10 }}>
+        Recorded API usage: {(d.metrics.inputTokens || 0).toLocaleString()} input · {(d.metrics.outputTokens || 0).toLocaleString()} output tokens.
+        Set the project&apos;s monetary budget and alerts in the OpenAI Platform dashboard as the final spending backstop.
+      </div>}
 
       <h4 className="sec">Model</h4>
       <TextField defaultValue={d.model || ''} placeholder="(the provider default)"

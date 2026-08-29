@@ -117,11 +117,13 @@ export function coachRoutes({ json, readBody, readSession, requireAdmin }) {
         jobsToday: log.filter(e => (e.at || '').slice(0, 10) === today).length,
         lastSuccess: cfgStore.lastSuccess(),
         lastError: cfgStore.lastError(),
-        recent: log.slice(-20).reverse().map(e => ({ at: e.at, kind: e.kind, trigger: e.trigger, outcome: e.outcome, errorClass: e.errorClass, ms: e.ms })),
+        recent: log.slice(-20).reverse().map(e => ({ at: e.at, kind: e.kind, trigger: e.trigger, outcome: e.outcome, errorClass: e.errorClass, ms: e.ms, usage: e.usage || null })),
         evidence: evidenceManifest(), metrics: {
           successes: log.filter(e => e.outcome === 'ready' || e.outcome === 'nochange').length,
           failures: log.filter(e => e.outcome === 'failed').length,
-          averageMs: log.length ? Math.round(log.reduce((n, e) => n + (e.ms || 0), 0) / log.length) : 0
+          averageMs: log.length ? Math.round(log.reduce((n, e) => n + (e.ms || 0), 0) / log.length) : 0,
+          inputTokens: log.reduce((n, e) => n + (e.usage?.input_tokens || 0), 0),
+          outputTokens: log.reduce((n, e) => n + (e.usage?.output_tokens || 0), 0)
         }
       });
     },
@@ -136,6 +138,7 @@ export function coachRoutes({ json, readBody, readSession, requireAdmin }) {
         // Credentials belong to the provider that issued them.
         if (body.provider !== cfgStore.load().provider) patch.auth = null;
         patch.provider = body.provider;
+        if (body.model === undefined) patch.model = cfgStore.PROVIDERS[body.provider].defaultModel || null;
       }
       if (body.model !== undefined) patch.model = body.model ? String(body.model).slice(0, 80) : null;
       if (body.caps) {

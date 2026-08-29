@@ -54,11 +54,13 @@ provider dies, the engine carries on offline without skipping a beat.
 | --- | --- | --- | --- |
 | **Claude Code** | Claude Agent SDK | `claude setup-token` on a trusted machine, pasted into the admin card | [Claude setup guide](../Claude-setup-instructions.md) |
 | **OpenAI Codex** | Codex CLI (pinned, bundled) | ChatGPT device-code sign-in from the admin card | [ChatGPT / Codex setup guide](../ChatGPT-setup-instructions.md) |
+| **OpenAI API (production)** | OpenAI Responses API | a dedicated OpenAI Platform project key, stored encrypted by OpenGym | recommended for a shared commercial instance |
 | **Fixture** | in-repo fake | nothing — no AI account at all | walks the whole loop for demos and CI |
 
-Both runtimes are built into the `api` image, so a self-hoster installs nothing. Neither path
-needs an API key. openGym never handles a browser OAuth callback and never asks your users for
-credentials.
+The CLI runtimes are built into the `api` image, so a self-hoster installs nothing. The production
+OpenAI adapter calls the Responses API directly and defaults to `gpt-5.4-mini`. Its project key is
+entered once by the instance admin, encrypted at rest, and supplied only to the isolated job.
+OpenGym never asks clients for provider credentials.
 
 > **Note.** The design deck describes a provider-agnostic surface including Gemini and an
 > owner-supplied custom command. Those adapters were built and then retired before release; a
@@ -72,12 +74,16 @@ credentials.
 
 ### If you run the instance
 
-1. Enable the Coach and sign in a provider from **Settings → Admin → AI Coach**. No `.env`
-   editing, no restart.
+1. Enable the Coach and connect a provider from **Settings → Admin → AI Coach**. For a shared or
+   commercial instance, choose **OpenAI API (production)** and paste a key from a dedicated
+   OpenAI Platform project. No `.env` editing or restart is required.
 2. Set per-profile and instance-wide daily caps *before* inviting people — every plan or review
    is one session billed to the account you connected.
 3. The card shows runtime version, sign-in state, jobs run today and the last failure. It never
    shows anyone's intake answers, payloads or proposals.
+4. Set a monetary budget and alerts on the OpenAI Platform project. OpenGym records input and
+   output token totals for operating visibility; the provider-side project budget is the final
+   spending backstop.
 
 Full walkthrough: [Claude](../Claude-setup-instructions.md) · [ChatGPT / Codex](../ChatGPT-setup-instructions.md) ·
 [self-hosting §8](SELF_HOSTING.md#8-the-ai-coach-optional).
