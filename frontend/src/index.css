@@ -867,6 +867,14 @@ h4.sec{
 .agenda-week span{font-size:12px;font-weight:400;color:var(--label-3);white-space:nowrap}
 .agenda-day{margin-bottom:16px}
 .agenda-day>.small{margin:0 4px 6px}
+.admin-limit-grid{display:grid;grid-template-columns:repeat(2,minmax(0,180px));gap:10px;margin-bottom:4px}
+.admin-limit-grid label{display:grid;gap:6px}
+.admin-limit-grid .field{width:100%}
+.admin-failure{display:grid;gap:6px;padding:11px 12px;border:1px solid color-mix(in srgb,var(--red) 35%,var(--sep));border-radius:10px;background:color-mix(in srgb,var(--red) 7%,transparent)}
+.admin-failure details{min-width:0}
+.admin-failure summary{cursor:pointer}
+.admin-failure code{display:block;max-height:140px;overflow:auto;margin-top:7px;padding:9px;border-radius:8px;background:var(--surface-2);color:var(--label-2);font-size:.7rem;line-height:1.45;white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word}
+@media(max-width:520px){.admin-limit-grid{grid-template-columns:1fr}}
 
 @media (max-height:560px){
   .calendar-sheet .cal-d{height:34px;border-radius:8px}

@@ -122,12 +122,12 @@ export default function AdminCoach() {
 
       {/* limits */}
       <h4 className="sec">Limits</h4>
-      <div className="row" style={{ gap: 10, flexWrap: 'wrap', marginBottom: 4 }}>
+      <div className="admin-limit-grid">
         <label className="small muted">Per user / day
-          <input className="num" type="number" min="0" max="200" defaultValue={d.caps.perProfileDaily} style={{ width: 70, marginLeft: 8 }}
+          <TextField type="number" min="0" max="200" defaultValue={d.caps.perProfileDaily}
             onBlur={e => patch({ caps: { ...d.caps, perProfileDaily: +e.target.value } })} /></label>
         <label className="small muted">Whole instance / day
-          <input className="num" type="number" min="0" max="5000" defaultValue={d.caps.instanceDaily} style={{ width: 70, marginLeft: 8 }}
+          <TextField type="number" min="0" max="5000" defaultValue={d.caps.instanceDaily}
             onBlur={e => patch({ caps: { ...d.caps, instanceDaily: +e.target.value } })} /></label>
       </div>
       <div className="dim small" style={{ marginBottom: 10 }}>0 = no limit. Every job is one session on your provider account.</div>
@@ -138,8 +138,12 @@ export default function AdminCoach() {
 
       {d.lastError && <>
         <h4 className="sec">Last failure</h4>
-        <div className="small" style={{ color: 'var(--red)' }}>{d.lastError.errorClass}{d.lastError.detail ? ' — ' + d.lastError.detail : ''}</div>
-        <div className="dim" style={{ fontSize: '.72rem' }}>{rel(d.lastError.at)}</div>
+        <div className="admin-failure">
+          <div className="small" style={{ color: 'var(--red)', fontWeight: 600 }}>{failureTitle(d.lastError.errorClass)}</div>
+          <div className="small muted">{failureHelp(d.lastError.errorClass)}</div>
+          {d.lastError.detail && <details><summary className="dim small">Technical details</summary><code>{d.lastError.detail}</code></details>}
+          <div className="dim" style={{ fontSize: '.72rem' }}>{rel(d.lastError.at)}</div>
+        </div>
       </>}
 
       {!!d.recent?.length && <>
@@ -163,6 +167,18 @@ const authLabel = a => ({
 const credentialLabel = type => ({
   'cli-token': 'Claude Code setup token', 'chatgpt-cli': 'ChatGPT CLI login', oauth: 'legacy token', apikey: 'API key'
 }[type] || 'credential')
+
+const failureTitle = kind => ({
+  auth: 'Authentication failed', timeout: 'Provider timed out', missing: 'Provider runtime unavailable',
+  provider: 'Provider request failed', unusable: 'Provider returned an invalid response', internal: 'Coach job failed'
+}[kind] || 'Coach job failed')
+
+const failureHelp = kind => ({
+  auth: 'Reconnect the provider credential, then run “Test the Coach” again.',
+  timeout: 'The provider did not respond in time. Try the test again before changing the configuration.',
+  missing: 'The selected provider runtime is not available in the API container.',
+  unusable: 'The provider responded, but the Coach could not safely use its result.'
+}[kind] || 'Open the technical details below for the diagnostic returned by the provider.')
 
 /* ------------------------------- setup token -------------------------------- */
 
