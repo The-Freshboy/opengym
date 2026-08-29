@@ -833,7 +833,8 @@ function ActivityLog({ existing, close }) {
     d: existing?.d || todayISO(), type: existing?.activityType || 'Climbing', name: existing?.name || '',
     durationMin: existing?.durationMin || (existing?.end > existing?.start ? Math.max(1, Math.round((existing.end - existing.start) / 60000)) : 60),
     intensity: existing?.intensity || 5, location: existing?.location || '', grade: existing?.grade || '',
-    distance: existing?.distance || '', note: existing?.note || ''
+    distance: existing?.distance || '', note: existing?.note || '', attempts: existing?.attempts || 0,
+    sends: existing?.sends || 0, flashes: existing?.flashes || 0, style: existing?.style || ''
   }))
   const set = x => setV(s => ({ ...s, ...x }))
   const save = () => {
@@ -851,6 +852,7 @@ function ActivityLog({ existing, close }) {
     <div style={{ height: 12 }} /><div className="small muted">{t('Intensity')} · {v.intensity}/10</div><Slider value={v.intensity} min={1} max={10} onChange={intensity => set({ intensity })} />
     <div style={{ height: 12 }} /><input className="field" value={v.location} onChange={e => set({ location: e.target.value })} placeholder={t('Location (optional)')} />
     <div style={{ height: 8 }} /><div className="row" style={{ gap: 8 }}><input className="field" value={v.grade} onChange={e => set({ grade: e.target.value })} placeholder={t('Grade / difficulty')} /><input className="field" inputMode="decimal" value={v.distance} onChange={e => set({ distance: e.target.value })} placeholder={t('Distance (km)')} /></div>
+    {/climb|boulder/i.test(v.type) && <><div style={{ height: 10 }} /><input className="field" value={v.style} onChange={e => set({ style: e.target.value })} placeholder="Style (bouldering, lead, top rope…)" /><div style={{ height: 10 }} /><div className="row" style={{ gap: 8 }}><Stepper label="Attempts" value={v.attempts} decimal={false} onChange={attempts => set({ attempts })} /><Stepper label="Sends" value={v.sends} decimal={false} onChange={sends => set({ sends })} /><Stepper label="Flashes" value={v.flashes} decimal={false} onChange={flashes => set({ flashes })} /></div></>}
     <div style={{ height: 8 }} /><TextArea rows={3} maxLength={1000} value={v.note} onChange={e => set({ note: e.target.value })} placeholder={t('Notes (optional)')} />
     <div style={{ height: 14 }} /><Button variant="primary" onClick={save}>{t(existing ? 'Save changes' : 'Log activity')}</Button>
   </>
@@ -915,7 +917,7 @@ function WorkoutDetail({ w, close }) {
   return <>
     <h3>{w.name}</h3>
     <div className="muted small" style={{ marginBottom: 12 }}>{[fmtDate(w.d, true), ...durPart(w.end - w.start), fmtVol(w.vol, st.unit), ...(w.bw ? [fmtNum(w.bw) + ' ' + st.unit] : [])].join(' · ')}</div>
-    {w.kind === 'activity' && <><div className="row" style={{ gap: 6, flexWrap: 'wrap', marginBottom: 12 }}><span className="tag acc">{t(w.activityType)}</span><span className="tag">{t('Intensity')} {w.intensity}/10</span>{w.location && <span className="tag">{w.location}</span>}{w.grade && <span className="tag">{w.grade}</span>}{w.distance && <span className="tag">{w.distance} km</span>}</div>{w.note && <div className="card small" style={{ whiteSpace: 'pre-wrap' }}>{w.note}</div>}<Button variant="primary" icon="pencil" onClick={() => { close(); activityLogSheet(w) }}>{t('Edit activity')}</Button><div style={{ height: 8 }} /><Button variant="tinted" icon="reset" onClick={() => { close(); duplicateRecordSheet(w) }}>{t('Repeat / duplicate')}</Button><div style={{ height: 8 }} /><Button variant="danger" onClick={() => confirmSheet({ title: t('Delete activity?'), message: t('This removes it from your history for good.'), confirmText: t('Delete'), danger: true, onConfirm: () => { update(s => { s.workouts = s.workouts.filter(x => x.id !== w.id) }); close() } })}>{t('Delete activity')}</Button></>}
+    {w.kind === 'activity' && <><div className="row" style={{ gap: 6, flexWrap: 'wrap', marginBottom: 12 }}><span className="tag acc">{t(w.activityType)}</span><span className="tag">{t('Intensity')} {w.intensity}/10</span>{w.location && <span className="tag">{w.location}</span>}{w.grade && <span className="tag">{w.grade}</span>}{w.style && <span className="tag">{w.style}</span>}{w.attempts > 0 && <span className="tag">{w.attempts} attempts</span>}{w.sends > 0 && <span className="tag">{w.sends} sends</span>}{w.flashes > 0 && <span className="tag">{w.flashes} flashes</span>}{w.distance && <span className="tag">{w.distance} km</span>}</div>{w.note && <div className="card small" style={{ whiteSpace: 'pre-wrap' }}>{w.note}</div>}<Button variant="primary" icon="pencil" onClick={() => { close(); activityLogSheet(w) }}>{t('Edit activity')}</Button><div style={{ height: 8 }} /><Button variant="tinted" icon="reset" onClick={() => { close(); duplicateRecordSheet(w) }}>{t('Repeat / duplicate')}</Button><div style={{ height: 8 }} /><Button variant="danger" onClick={() => confirmSheet({ title: t('Delete activity?'), message: t('This removes it from your history for good.'), confirmText: t('Delete'), danger: true, onConfirm: () => { update(s => { s.workouts = s.workouts.filter(x => x.id !== w.id) }); close() } })}>{t('Delete activity')}</Button></>}
     {w.kind !== 'activity' && <>
     {w.entries.map((e, i) => {
       const ex = EXIDX[e.id]

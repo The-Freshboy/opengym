@@ -247,6 +247,7 @@ export default function Settings() {
 
     {/* ---------- data: fill it, bring things over, back it up, wipe it ---------- */}
     <Section title={t('Data')}>
+      {user && <Row icon="history" iconTint="var(--green)" title="Sync & recovery" subtitle="Resolve device changes and restore server copies" accessory="chevron" onClick={() => nav('/settings/sync')} />}
       <Row icon="sparkles" iconTint="var(--acc)" title={t('Load starter plan (PPL)')} accessory="chevron" onClick={loadStarterPlan} />
       <Row icon="shuffle" iconTint="var(--teal)" title={t('Import from another app')}
         subtitle={t('FitNotes, Strong, Hevy — or body weight from Apple Health')}

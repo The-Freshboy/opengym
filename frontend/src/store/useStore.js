@@ -6,11 +6,13 @@ import { DEMO, DEMO_SEEDED } from '../lib/demo.js'
 import { MOBILE, nativeLoad, nativeSave, syncReminder } from '../lib/mobile.js'
 
 const KEY = 'gym_state_v1'
+const REV_KEY = 'gym_server_revision'
+const CONFLICT_KEY = 'gym_sync_conflict'
 export const DEF = {
   unit: 'kg', restSec: 90, sound: true, haptics: true, keepAwake: true, lang: 'en',
   theme: 'dark', accent: 'lime', body: 'male', targetW: null,
   bodyweight: [], routines: [], week: {}, dayPlan: {},
-  exWeights: {}, workouts: [], active: null, customEx: [], gifSize: 'full', readiness: {}, favoriteEx: [], homeShortcuts: ['activity', 'readiness'], calendarView: 'month', calendarFilters: ['completed', 'planned', 'activities', 'missed'],
+  exWeights: {}, workouts: [], active: null, customEx: [], gifSize: 'full', readiness: {}, trainingBlocks: [], favoriteEx: [], homeShortcuts: ['activity', 'readiness'], calendarView: 'month', calendarFilters: ['completed', 'planned', 'activities', 'missed'],
   // effort: which per-set effort scale is logged — 'none' | 'rir' | 'rpe'. null, not 'none', so
   // that a profile which never chose (loaded state is overlaid on DEF, on every path: local,
   // server pull, backup import) still falls back to the `showRir` boolean this replaced and
@@ -79,6 +81,8 @@ export const useStore = create((set, get) => {
     get().setUser(null)
     localStorage.removeItem('gym_guest')
     localStorage.removeItem('gym_dirty')
+    localStorage.removeItem(REV_KEY)
+    localStorage.removeItem(CONFLICT_KEY)
     localStorage.removeItem(KEY)
     persist(clone(DEF), false)
   }
@@ -88,6 +92,7 @@ export const useStore = create((set, get) => {
     undoState: null,
     user: (() => { try { return JSON.parse(localStorage.getItem('gym_user')) || null } catch { return null } })(),
     ready: false,
+    syncConflict: (() => { try { return JSON.parse(localStorage.getItem(CONFLICT_KEY)) || null } catch { return null } })(),
     // Instance capabilities from GET /api/config. `config.coach` is present only when the
     // owner has both enabled the Coach and connected a provider — every Coach entry point in
     // the app hangs off it, so an unconfigured instance renders exactly what it always did.
@@ -123,12 +128,27 @@ export const useStore = create((set, get) => {
     async pushState() {
       if (!get().user) return
       clearTimeout(pushTm)
-      try { await api('/api/data', { method: 'PUT', body: JSON.stringify({ state: get().S }) }); localStorage.removeItem('gym_dirty') }
-      catch (e) { localStorage.setItem('gym_dirty', '1') }
+      try {
+        const raw = localStorage.getItem(REV_KEY)
+        const baseRevision = raw == null ? null : Number(raw)
+        const result = await api('/api/data', { method: 'PUT', body: JSON.stringify({ state: get().S, baseRevision }) })
+        localStorage.setItem(REV_KEY, String(result.revision))
+        localStorage.removeItem('gym_dirty')
+        localStorage.removeItem(CONFLICT_KEY)
+        set({ syncConflict: null })
+      } catch (e) {
+        localStorage.setItem('gym_dirty', '1')
+        if (e.status === 409 && e.data?.current) {
+          const conflict = { detectedAt: new Date().toISOString(), local: clone(get().S), server: e.data.current }
+          localStorage.setItem(CONFLICT_KEY, JSON.stringify(conflict))
+          set({ syncConflict: conflict })
+        }
+      }
     },
     async pullState() {
       try {
-        const { state } = await api('/api/data')
+        const { state, revision } = await api('/api/data')
+        localStorage.setItem(REV_KEY, String(revision || 0))
         const S = get().S
         const dirty = localStorage.getItem('gym_dirty') === '1'
         if (state && (!hasData(S) || ((state._ts || 0) >= (S._ts || 0) && !dirty))) {
@@ -138,6 +158,23 @@ export const useStore = create((set, get) => {
           persist(next, false)
         } else if (hasData(S)) { await get().pushState() }
       } catch (e) { /* offline — keep local */ }
+    },
+
+    resolveSyncConflict(choice) {
+      const conflict = get().syncConflict
+      if (!conflict) return
+      if (choice === 'server') {
+        localStorage.setItem(REV_KEY, String(conflict.server.revision || 0))
+        localStorage.removeItem('gym_dirty')
+        localStorage.removeItem(CONFLICT_KEY)
+        persist(Object.assign(clone(DEF), conflict.server.state || {}), false)
+        set({ syncConflict: null })
+      } else {
+        localStorage.setItem(REV_KEY, String(conflict.server.revision || 0))
+        localStorage.removeItem(CONFLICT_KEY)
+        set({ syncConflict: null })
+        persist(conflict.local, true)
+      }
     },
 
     async signOut() {

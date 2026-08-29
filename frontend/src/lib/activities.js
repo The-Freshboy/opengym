@@ -20,6 +20,12 @@ export function makeActivity(input, now = Date.now()) {
     intensity: Math.min(10, Math.max(1, Number(input.intensity) || 5)),
     ...(input.location?.trim() ? { location: input.location.trim().slice(0, 120) } : {}),
     ...(input.grade?.trim() ? { grade: input.grade.trim().slice(0, 80) } : {}),
+    ...(/climb|boulder/i.test(input.type || '') ? {
+      attempts: Math.max(0, Math.round(Number(input.attempts) || 0)),
+      sends: Math.max(0, Math.round(Number(input.sends) || 0)),
+      flashes: Math.max(0, Math.round(Number(input.flashes) || 0)),
+      style: String(input.style || '').trim().slice(0, 40)
+    } : {}),
     ...(Number(input.distance) > 0 ? { distance: Number(input.distance) } : {}),
     ...(input.note?.trim() ? { note: input.note.trim().slice(0, 1000) } : {}),
     entries: [], prs: [], vol: 0

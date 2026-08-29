@@ -3,6 +3,7 @@ import { LIBRARY } from './payload.js';
 
 const require_ = createRequire(import.meta.url);
 const EVIDENCE = require_('./evidence.json');
+export const evidenceManifest = () => JSON.parse(JSON.stringify(EVIDENCE));
 const BY_ID = new Map(LIBRARY.map(e => [e.id, e]));
 const muscleOf = e => { const x = BY_ID.get(e?.id); return x?.tg || x?.bp || null; };
 const round = n => Math.round(n * 10) / 10;
@@ -55,6 +56,18 @@ export function scientificReview(payload, now = new Date()) {
   if (effortSets >= 6 && hardSets / effortSets >= .75) findings.push({ id: 'effort-mostly-near-failure', category: 'effort', severity: 'watch', confidence: 'medium', metric: { hardSets, effortSets, proportion: round(hardSets / effortSets) }, reading: `${hardSets} of ${effortSets} rated sets were logged at 0–1 RIR or RPE 9–10. Failure is not consistently required for results, so recovery and target completion deserve attention.`, sourceIds: ['acsm-2026', 'refalo-2023-failure'] });
   const stalls = (payload.aggregates?.exercises || []).filter(e => e.stalls >= 2);
   if (stalls.length) findings.push({ id: 'repeated-target-misses', category: 'progression', severity: 'action', confidence: 'high', metric: { exercises: stalls.map(e => ({ id: e.id, name: e.name, stalls: e.stalls })) }, reading: `${stalls.length} exercise${stalls.length === 1 ? ' has' : 's have'} missed the prescribed target in at least two consecutive sessions.`, sourceIds: ['moesgaard-2022-periodisation'] });
+  const adherence = payload.aggregates?.adherence;
+  if (adherence?.plannedPerWeek > 0 && sessions >= 4) {
+    const weeks = Math.max(1, Math.ceil((new Date(payload.window?.to || now) - new Date(payload.window?.from || now)) / 604800000));
+    const expected = adherence.plannedPerWeek * weeks;
+    const rate = Math.min(1, sessions / expected);
+    if (rate < .7) findings.push({ id: 'adherence-low', category: 'adherence', severity: 'action', confidence: 'medium', metric: { sessions, expected, rate: round(rate) }, reading: `${sessions} sessions were completed against roughly ${expected} planned in this review window. Improving plan fit may be more useful than adding work.`, sourceIds: ['acsm-2026'] });
+  }
+  if (sessions >= 6) {
+    const loads = (payload.window.workouts || []).map(w => (w.entries || []).reduce((n, e) => n + (e.sets || []).filter(s => s.done).length, 0));
+    const half = Math.floor(loads.length / 2), older = loads.slice(0, half).reduce((a, b) => a + b, 0), newer = loads.slice(half).reduce((a, b) => a + b, 0);
+    if (older > 0 && newer / older > 1.3) findings.push({ id: 'workload-jump', category: 'recovery', severity: 'watch', confidence: 'medium', metric: { olderSets: older, newerSets: newer, change: round(newer / older - 1) }, reading: `Completed set volume rose by ${Math.round((newer / older - 1) * 100)}% between halves of the review window. Hold or reduce work if performance or recovery is worsening.`, sourceIds: ['acsm-2026'] });
+  }
   if (!findings.length) findings.push({ id: 'no-clear-signal', category: 'data-quality', severity: 'info', confidence: sessions >= 4 ? 'medium' : 'low', metric: { sessions }, reading: sessions < 4 ? `Only ${sessions} completed session${sessions === 1 ? '' : 's'} are available; that is too little for strong trend claims.` : 'No high-confidence workload, effort, or progression flag was detected.', sourceIds: ['acsm-2026'] });
   return { schema: 1, generatedAt: now.toISOString(), evidenceVersion: EVIDENCE.version, confidence: metadataCoverage >= .9 && sessions >= 4 ? 'medium' : 'low', limitations: ['Set counts use primary exercise metadata and do not assign fractional credit to secondary muscles.', 'Population-level research cannot determine an individual optimum or assess pain, injury, technique, sleep, or nutrition.', ...(metadataCoverage < 1 ? [`Exercise metadata coverage is ${Math.round(metadataCoverage * 100)}%.`] : [])], measurements: { plannedByMuscle: planned, completedByMuscle: completed, sessions, metadataCoverage: round(metadataCoverage) }, findings, sources: EVIDENCE.sources };
 }

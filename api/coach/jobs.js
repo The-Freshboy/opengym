@@ -151,7 +151,9 @@ export function enqueue(uid, opts) {
     startedAt: Date.now()
   };
   inflight.add(uid);
-  patchUser(uid, { current: { id: job.id, kind: job.kind, state: 'queued', startedAt: job.startedAt } });
+  // Persist the complete queued request. If the container restarts before a provider call
+  // begins, recoverOnBoot can safely resume it without charging another daily-cap slot.
+  patchUser(uid, { current: job });
   queue.push(job);
   pump();
   return { id: job.id };
@@ -169,9 +171,11 @@ function pump() {
 
 function finish(job, result) {
   const rec = readUser(job.uid);
+  const cfg = cfgStore.load();
+  const audit = result.audit || { provider: cfg.provider, model: cfg.model || null, evidenceVersion: result.pending?.science?.evidenceVersion || null };
   const history = [...(rec.history || []), {
     id: job.id, kind: job.kind, trigger: job.trigger, outcome: result.outcome,
-    errorClass: result.errorClass || null, at: Date.now()
+    errorClass: result.errorClass || null, at: Date.now(), audit
   }].slice(-HISTORY_MAX);
   writeUser(job.uid, {
     ...rec,
@@ -216,7 +220,7 @@ export function buildPrompt(kind, payload, repair) {
 /* ---------- execution ---------- */
 
 async function execute(job) {
-  patchUser(job.uid, { current: { id: job.id, kind: job.kind, state: 'running', startedAt: job.startedAt } });
+  patchUser(job.uid, { current: { ...job, state: 'running' } });
 
   const S = readState(job.uid);
   if (!S) return finish(job, { outcome: 'failed', errorClass: 'nostate' });
@@ -263,7 +267,8 @@ async function execute(job) {
           planHash: hashPlan(payloadLib.canonicalPlan(S)), iteration: 1,
           summary: attempt.reading || 'No plan change is supported by the available data.',
           evidence: { from: payload.window?.from || null, to: payload.window?.to || null, sessions: payload.window?.workouts?.length || 0 },
-          changes: [], notes: [], science: payload.science
+          changes: [], notes: [], science: payload.science,
+          audit: { provider: cfg.provider, model: cfg.model || null, evidenceVersion: payload.science?.evidenceVersion || null }
         };
         return finish(job, { outcome: 'ready', pending });
       }
@@ -277,6 +282,7 @@ async function execute(job) {
       planHash: hashPlan(payloadLib.canonicalPlan(S)),
       iteration: job.refine ? (pendingCreate?.iteration || 1) + 1 : 1,
       ...(job.kind === 'review' ? { science: payload.science } : {}),
+      audit: { provider: cfg.provider, model: cfg.model || null, evidenceVersion: payload.science?.evidenceVersion || null },
       ...attempt.result
     };
     return finish(job, { outcome: 'ready', pending });
@@ -383,9 +389,8 @@ export async function testRun() {
 }
 
 /**
- * A job that was running when the process died is not coming back. Say so plainly and let the
- * user retry, rather than leaving a spinner that never resolves or silently re-running work
- * that may already have cost them a provider call.
+ * Queued work has not contacted a provider and can be resumed safely. Running work may already
+ * have incurred a charge, so it is marked failed rather than silently submitted twice.
  */
 export function recoverOnBoot() {
   let n = 0;
@@ -395,6 +400,12 @@ export function recoverOnBoot() {
       const uid = f.replace(/\.json$/, '');
       const rec = readUser(uid);
       if (!rec.current) continue;
+      if (rec.current.state === 'queued' && rec.current.uid && rec.current.kind) {
+        inflight.add(uid);
+        queue.push(rec.current);
+        n++;
+        continue;
+      }
       writeUser(uid, {
         ...rec, current: null,
         history: [...(rec.history || []), { id: rec.current.id, kind: rec.current.kind, outcome: 'failed', errorClass: 'restart', at: Date.now() }].slice(-HISTORY_MAX)
@@ -402,6 +413,7 @@ export function recoverOnBoot() {
       n++;
     }
   } catch { /* no coach dir yet */ }
-  if (n) console.log(`coach: cleared ${n} job(s) interrupted by restart`);
+  pump();
+  if (n) console.log(`coach: recovered or cleared ${n} interrupted job(s)`);
   return n;
 }

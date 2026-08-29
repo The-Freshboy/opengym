@@ -13,6 +13,8 @@ import * as coachConfig from './coach/config.js';
 import * as coachJobs from './coach/jobs.js';
 import { coachRoutes } from './coach/routes.js';
 import { startCadence } from './coach/cadence.js';
+import { createStateStore, StateConflict } from './state-store.js';
+import { createRateLimiter } from './rate-limit.js';
 
 const PORT = +(process.env.PORT || 3000);
 const DATA = process.env.DATA_DIR || '/data';
@@ -56,10 +58,10 @@ function atomicWrite(file, content) {
   fs.writeFileSync(tmp, content);
   fs.renameSync(tmp, file);
 }
-const stateFile = uid => path.join(DATA, 'state-' + uid.replace(/[^a-zA-Z0-9_-]/g, '') + '.json');
-function readState(uid) {
-  try { return JSON.parse(fs.readFileSync(stateFile(uid), 'utf8')); } catch { return null; }
-}
+const stateStore = createStateStore(DATA);
+const stateFile = stateStore.file;
+const readState = uid => stateStore.read(uid).state;
+const rateLimit = createRateLimiter();
 
 /* ---------- push notifications (Web Push / VAPID) ---------- */
 const vapidFile = path.join(DATA, 'vapid.json');
@@ -266,7 +268,7 @@ setInterval(() => { for (const [k, v] of presence) if (Date.now() - v.updatedAt 
 
 /* ---------- routes ---------- */
 const routes = {
-  'GET /api/health': async (req, res) => json(res, 200, { ok: true, users: db.users.length }),
+  'GET /api/health': async (req, res) => json(res, 200, { ok: true }),
 
   // Public config the login screen needs before anyone is signed in. `coach` is absent unless
   // the instance has both switched the Coach on and successfully connected a provider — the
@@ -394,10 +396,7 @@ const routes = {
   'GET /api/data': async (req, res) => {
     const user = readSession(req);
     if (!user) return json(res, 401, { error: 'not signed in' });
-    try {
-      const state = JSON.parse(fs.readFileSync(stateFile(user.id), 'utf8'));
-      json(res, 200, { state });
-    } catch { json(res, 200, { state: null }); }
+    json(res, 200, stateStore.read(user.id));
   },
 
   'PUT /api/data': async (req, res) => {
@@ -406,8 +405,32 @@ const routes = {
     const body = await readBody(req);
     if (!body.state || typeof body.state !== 'object') return json(res, 400, { error: 'state required' });
     delete body.state.active;              // in-progress workouts stay device-local
-    atomicWrite(stateFile(user.id), JSON.stringify(body.state));
-    json(res, 200, { ok: true, ts: body.state._ts || null });
+    try {
+      const saved = stateStore.write(user.id, body.state, body.baseRevision);
+      json(res, 200, { ok: true, revision: saved.revision, updatedAt: saved.updatedAt, ts: body.state._ts || null });
+    } catch (e) {
+      if (!(e instanceof StateConflict)) throw e;
+      json(res, 409, { error: e.message, current: e.current });
+    }
+  },
+
+  'GET /api/data/snapshots': async (req, res) => {
+    const user = readSession(req);
+    if (!user) return json(res, 401, { error: 'not signed in' });
+    json(res, 200, { snapshots: stateStore.list(user.id), current: stateStore.read(user.id) });
+  },
+
+  'POST /api/data/snapshots/restore': async (req, res) => {
+    const user = readSession(req);
+    if (!user) return json(res, 401, { error: 'not signed in' });
+    const body = await readBody(req);
+    try {
+      const saved = stateStore.restore(user.id, body.id, body.baseRevision);
+      json(res, 200, saved);
+    } catch (e) {
+      if (e instanceof StateConflict) return json(res, 409, { error: e.message, current: e.current });
+      json(res, /not found/.test(e.message) ? 404 : 400, { error: e.message });
+    }
   },
 
   'GET /api/push/public-key': async (req, res) => json(res, 200, { key: vapid.publicKey }),
@@ -588,6 +611,11 @@ http.createServer(async (req, res) => {
   const key = req.method + ' ' + url.pathname;
   const handler = routes[key];
   if (!handler) return json(res, 404, { error: 'not found' });
+  if (/^POST \/api\/(register|login)\//.test(key)) {
+    const ip = String(req.headers['x-forwarded-for'] || req.socket.remoteAddress || '').split(',')[0].trim();
+    const retry = rateLimit(`${ip}:${key}`, key.endsWith('/verify') ? 20 : 40, 60000);
+    if (retry) return json(res, 429, { error: 'too many attempts — try again shortly' }, { 'Retry-After': String(retry) });
+  }
   try { await handler(req, res); }
   catch (e) {
     console.error(key, e);

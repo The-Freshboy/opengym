@@ -14,7 +14,7 @@ export default function TabBar({ onStart }) {
   const editing = !!S.active?.editingWorkoutId
   if (!user && !isGuest) return null
   const cur = loc.pathname.split('/')[1] || 'home'
-  const on = k => cur === k || (cur === 'history' && k === 'stats') || (cur === 'settings' && k === 'home')
+  const on = k => cur === k || ((cur === 'history' || cur === 'stats') && k === 'insights') || (cur === 'settings' && k === 'home')
 
   const startWorkout = async () => {
     if (!S.active) {
@@ -41,7 +41,7 @@ export default function TabBar({ onStart }) {
         <span className="cir"><Icon name={editing ? 'pencil' : S.active ? 'play' : 'dumbbell'} /></span>
         <span>{editing ? t('Edit') : S.active ? t('Resume') : t('Start')}</span>
       </button>
-      <Tab k="stats" icon="chart" to="/stats" label={t('Stats')} />
+      <Tab k="insights" icon="chart" to="/insights" label={t('Insights')} />
       <Tab k="library" icon="list" to="/library" label={t('Exercises')} />
     </nav>
   )

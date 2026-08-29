@@ -46,6 +46,7 @@ export default function Home() {
   const S = useStore(s => s.S)
   const user = useStore(s => s.user)
   const config = useStore(s => s.config)
+  const syncConflict = useStore(s => s.syncConflict)
   const canUndo = useStore(s => !!s.undoState)
   const undo = useStore(s => s.undo)
   const [weekOffset, setWeekOffset] = useState(0)
@@ -94,6 +95,8 @@ export default function Home() {
       <div><h1>{user ? t('Hi {0}', user.name) : 'openGym'}</h1><div className="sub">{today.toLocaleDateString(dateLocale(), { weekday: 'long', day: 'numeric', month: 'long' })}</div></div>
       <button className="iconbtn" onClick={() => nav('/settings')} aria-label={t('Settings')}><Icon name="gear" /></button>
     </div>
+
+    {syncConflict && <div className="card tappable" style={{ borderColor: 'var(--orange)' }} onClick={() => nav('/settings/sync')}><div className="row between"><div><b>Sync needs your choice</b><div className="small dim">This profile changed on another device.</div></div><Icon name="chevronRight" /></div></div>}
 
     <div className="card">
       <div className="row between" style={{ marginBottom: 8 }}>

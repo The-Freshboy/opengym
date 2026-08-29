@@ -9,6 +9,7 @@ import * as oauth from './oauth.js';
 import * as jobs from './jobs.js';
 import { adapterFor } from './adapters/index.js';
 import { DATA_CATEGORIES } from './payload.js';
+import { evidenceManifest } from './science.js';
 
 // Job failures the user sees, in the app's own voice. The raw provider detail never reaches
 // them — it goes to the admin card, which is where someone can act on it (FR-47).
@@ -116,7 +117,12 @@ export function coachRoutes({ json, readBody, readSession, requireAdmin }) {
         jobsToday: log.filter(e => (e.at || '').slice(0, 10) === today).length,
         lastSuccess: cfgStore.lastSuccess(),
         lastError: cfgStore.lastError(),
-        recent: log.slice(-20).reverse().map(e => ({ at: e.at, kind: e.kind, trigger: e.trigger, outcome: e.outcome, errorClass: e.errorClass, ms: e.ms }))
+        recent: log.slice(-20).reverse().map(e => ({ at: e.at, kind: e.kind, trigger: e.trigger, outcome: e.outcome, errorClass: e.errorClass, ms: e.ms })),
+        evidence: evidenceManifest(), metrics: {
+          successes: log.filter(e => e.outcome === 'ready' || e.outcome === 'nochange').length,
+          failures: log.filter(e => e.outcome === 'failed').length,
+          averageMs: log.length ? Math.round(log.reduce((n, e) => n + (e.ms || 0), 0) / log.length) : 0
+        }
       });
     },
 

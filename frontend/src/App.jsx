@@ -20,9 +20,11 @@ const Plan = lazy(() => import('./views/Plan.jsx'))
 const RoutineEdit = lazy(() => import('./views/RoutineEdit.jsx'))
 const Workout = lazy(() => import('./views/Workout.jsx'))
 const Stats = lazy(() => import('./views/Stats.jsx'))
+const Insights = lazy(() => import('./views/Insights.jsx'))
 const History = lazy(() => import('./views/History.jsx'))
 const Library = lazy(() => import('./views/Library.jsx'))
 const Settings = lazy(() => import('./views/Settings.jsx'))
+const SyncRecovery = lazy(() => import('./views/SyncRecovery.jsx'))
 const Admin = lazy(() => import('./views/Admin.jsx'))
 const Coach = lazy(() => import('./views/Coach.jsx'))
 const CoachIntake = lazy(() => import('./views/CoachIntake.jsx'))
@@ -76,9 +78,11 @@ function Shell() {
               <Route path="/plan/r/:id" element={<RoutineEdit />} />
               <Route path="/workout" element={<Workout />} />
               <Route path="/stats" element={<Stats />} />
+              <Route path="/insights" element={<Insights />} />
               <Route path="/history" element={<History />} />
               <Route path="/library" element={<Library />} />
               <Route path="/settings" element={<Settings />} />
+              <Route path="/settings/sync" element={<SyncRecovery />} />
               {/* The Coach screens gate themselves on the instance config; the routes exist
                   unconditionally so a deep link from a notification lands somewhere sane
                   rather than on the catch-all. */}
