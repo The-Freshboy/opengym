@@ -133,7 +133,7 @@ export default function AdminCoach() {
       <div className="dim small" style={{ marginBottom: 10 }}>0 = no limit. Every job is one session on your provider account.</div>
       {d.provider === 'openai' && <div className="small muted" style={{ marginBottom: 10 }}>
         Recorded API usage: {(d.metrics.inputTokens || 0).toLocaleString()} input · {(d.metrics.outputTokens || 0).toLocaleString()} output tokens.
-        Set the project&apos;s monetary budget and alerts in the OpenAI Platform dashboard as the final spending backstop.
+        Also configure billing controls and alerts in the OpenAI Platform dashboard; OpenGym&apos;s instance daily cap is the in-app hard limit.
       </div>}
 
       <h4 className="sec">Model</h4>

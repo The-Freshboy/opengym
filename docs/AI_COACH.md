@@ -81,9 +81,9 @@ OpenGym never asks clients for provider credentials.
    is one session billed to the account you connected.
 3. The card shows runtime version, sign-in state, jobs run today and the last failure. It never
    shows anyone's intake answers, payloads or proposals.
-4. Set a monetary budget and alerts on the OpenAI Platform project. OpenGym records input and
-   output token totals for operating visibility; the provider-side project budget is the final
-   spending backstop.
+4. Configure billing controls and alerts on the OpenAI Platform project. OpenGym records input
+   and output token totals for operating visibility, while its instance daily cap is the in-app
+   hard limit on Coach jobs.
 
 Full walkthrough: [Claude](../Claude-setup-instructions.md) · [ChatGPT / Codex](../ChatGPT-setup-instructions.md) ·
 [self-hosting §8](SELF_HOSTING.md#8-the-ai-coach-optional).
