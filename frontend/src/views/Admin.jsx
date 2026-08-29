@@ -9,6 +9,7 @@ import { confirmSheet } from '../sheets.jsx'
 import Icon from '../components/Icon.jsx'
 import { Button } from '../components/ui.jsx'
 import AdminCoach from './AdminCoach.jsx'
+import { parsePlan } from '../lib/plan-share.js'
 
 // Admin-only operator dashboard (owner passkey + admin flag; guarded again server-side).
 // Deliberately English-only — it isn't part of the translated end-user surface, so it stays
@@ -26,14 +27,33 @@ const dur = ms => { const m = Math.max(0, Math.floor(ms / 60000)); return m < 60
 
 function UserDetail({ id, onChanged, close }) {
   const [d, setD] = useState(null)
+  const [pt, setPt] = useState({ status: '', goal: '', message: '', privateNotes: '' })
   const toast = useUI(s => s.toast)
-  useEffect(() => { api('/api/admin/user?id=' + encodeURIComponent(id)).then(setD).catch(e => toast(e.message)) }, [id])
+  useEffect(() => { api('/api/admin/user?id=' + encodeURIComponent(id)).then(data => {
+    setD(data)
+    setPt({ status: data.pt?.status || '', goal: data.pt?.goal || '', message: data.pt?.message || '', privateNotes: data.pt?.privateNotes || '' })
+  }).catch(e => toast(e.message)) }, [id])
   if (!d) return <div className="muted small">Loading…</div>
   const u = d.user
   const setDisabled = disabled => {
     api('/api/admin/user/disable', { method: 'POST', body: JSON.stringify({ id: u.id, disabled }) })
       .then(() => { toast(disabled ? 'User disabled' : 'User enabled'); onChanged(); close() })
       .catch(e => toast(e.message))
+  }
+  const savePt = () => api('/api/admin/user/pt', { method: 'POST', body: JSON.stringify({ id: u.id, ...pt }) })
+    .then(() => { toast('Client details saved'); onChanged() }).catch(e => toast(e.message))
+  const assignPlan = ev => {
+    const file = ev.target.files[0]; ev.target.value = ''; if (!file) return
+    const reader = new FileReader()
+    reader.onload = () => {
+      try {
+        const plan = parsePlan(reader.result)
+        api('/api/admin/user/plan', { method: 'POST', body: JSON.stringify({ id: u.id, plan }) })
+          .then(() => { toast('Plan sent for client approval'); setD(x => ({ ...x, pt: { ...(x.pt || {}), plan: { bundle: plan } } })) })
+          .catch(e => toast(e.message))
+      } catch (e) { toast(e.message) }
+    }
+    reader.readAsText(file)
   }
   return <>
     <h3 className="capitalize">{u.name}</h3>
@@ -43,6 +63,18 @@ function UserDetail({ id, onChanged, close }) {
       {u.invitedBy && <span className="tag">invite {u.invitedBy}</span>}
       <span className="tag">joined {u.created ? fmtDate(u.created.slice(0, 10)) : '—'}</span>
     </div>
+    {!u.admin && <>
+      <h4 className="sec">PT pilot</h4>
+      <div className="chips" style={{ marginBottom: 10 }}>
+        {['onboarding', 'active', 'paused', 'complete'].map(s => <button key={s} className={'chip' + (pt.status === s ? ' on' : '')} onClick={() => setPt(x => ({ ...x, status: s }))}>{s}</button>)}
+      </div>
+      <input className="input" placeholder="Client goal" value={pt.goal} onChange={e => setPt(x => ({ ...x, goal: e.target.value }))} />
+      <textarea className="input" rows={3} style={{ marginTop: 8 }} placeholder="Message visible to client" value={pt.message} onChange={e => setPt(x => ({ ...x, message: e.target.value }))} />
+      <textarea className="input" rows={4} style={{ marginTop: 8 }} placeholder="Private PT notes — never visible to client" value={pt.privateNotes} onChange={e => setPt(x => ({ ...x, privateNotes: e.target.value }))} />
+      <div style={{ height: 8 }} /><Button variant="primary" onClick={savePt}>Save client details</Button>
+      <div style={{ height: 8 }} /><label className="btn tinted" style={{ display: 'flex' }}><Icon name="upload" />Assign plan file<input type="file" accept="application/json,.json" hidden onChange={assignPlan} /></label>
+      {d.pt?.plan && <div className="small dim" style={{ marginTop: 7 }}>A plan is waiting for this client to review.</div>}
+    </>}
     <div className="tiles" style={{ textAlign: 'left' }}>
       <div className="tile"><div className="l">Workouts</div><div className="v" style={{ fontSize: '1.1rem' }}>{d.workouts.length}</div></div>
       <div className="tile"><div className="l">Weigh-ins</div><div className="v" style={{ fontSize: '1.1rem' }}>{d.bodyweight.length}</div></div>
@@ -66,7 +98,8 @@ function UserDetail({ id, onChanged, close }) {
 
 function InvitesCard({ invites, reload }) {
   const toast = useUI(s => s.toast)
-  const gen = () => api('/api/admin/invites/new', { method: 'POST', body: '{}' })
+  const [note, setNote] = useState('')
+  const gen = () => api('/api/admin/invites/new', { method: 'POST', body: JSON.stringify({ note }) })
     .then(({ invite }) => { navigator.clipboard?.writeText(invite.code).catch(() => {}); toast('Code ' + invite.code + ' created & copied'); reload() })
     .catch(e => toast(e.message))
   const revoke = code => api('/api/admin/invites/revoke', { method: 'POST', body: JSON.stringify({ code }) })
@@ -77,9 +110,11 @@ function InvitesCard({ invites, reload }) {
     <div className="row between"><h2 style={{ margin: 0 }}>Invite codes</h2>
       <Button variant="primary" size="sm" onClick={gen} icon="plus">Generate</Button></div>
     <div className="small muted" style={{ margin: '6px 0 10px' }}>{open.length} unused · {used.length} redeemed</div>
+    <input className="input" placeholder="Client name or invite label (optional)" value={note} onChange={e => setNote(e.target.value)} style={{ marginBottom: 8 }} />
     {open.map(i => <div key={i.code} className="row between" style={{ padding: '7px 2px', borderBottom: '1px solid var(--sep)' }}>
-      <span style={{ fontFamily: 'ui-monospace,SFMono-Regular,Menlo,monospace', fontWeight: 500, letterSpacing: '.06em' }}
+      <span><span style={{ fontFamily: 'ui-monospace,SFMono-Regular,Menlo,monospace', fontWeight: 500, letterSpacing: '.06em' }}
         onClick={() => { navigator.clipboard?.writeText(i.code).catch(() => {}); toast('Copied ' + i.code) }}>{i.code}</span>
+        {i.note && <small className="dim" style={{ display: 'block' }}>{i.note}</small>}</span>
       <button className="iconbtn" style={{ width: 32, height: 30, borderRadius: 8, fontSize: 15, color: 'var(--red)' }} onClick={() => revoke(i.code)} aria-label="revoke"><Icon name="trash" /></button>
     </div>)}
     {used.map(i => <div key={i.code} className="row between dim" style={{ padding: '7px 2px', fontSize: '.8rem' }}>

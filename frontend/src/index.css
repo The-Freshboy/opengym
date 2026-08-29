@@ -824,6 +824,16 @@ h4.sec{
 }
 .steps-list::marker{color:var(--label-3)}
 
+/* --- privacy-conscious exercise videos --- */
+.yt-demo{margin:10px 0 14px}
+.yt-launch{width:100%;min-height:76px;display:flex;align-items:center;gap:13px;padding:13px;text-align:left;border-radius:var(--r);background:var(--surface-2);color:var(--label)}
+.yt-launch:active{background:var(--surface-3)}
+.yt-play{width:46px;height:46px;flex:none;display:grid;place-items:center;border-radius:50%;background:var(--acc);color:#071215;font-size:18px}
+.yt-launch b,.yt-launch small{display:block}.yt-launch b{font-size:15px}.yt-launch small{margin-top:3px;color:var(--label-3);font-size:12px;font-weight:400}
+.yt-frame{display:block;width:100%;aspect-ratio:16/9;border:0;border-radius:var(--r);background:#000}
+.yt-open{display:inline-block;margin:7px 3px 0;color:var(--acc);font-size:12px}
+.yt-demo.compact{margin:8px 0 12px}.yt-demo.compact .yt-launch{min-height:64px;padding:10px}.yt-demo.compact .yt-play{width:38px;height:38px}
+
 /* --- month calendar --- */
 .cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:5px;margin-top:10px}
 .cal-h{text-align:center;font-size:11px;color:var(--label-3);font-weight:500;text-transform:uppercase;padding:2px 0}

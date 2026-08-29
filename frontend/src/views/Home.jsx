@@ -1,10 +1,10 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useStore } from '../store/useStore.js'
 import { effectiveRoutine, effectiveRoutineIds, streakWeeks, lastBW, setsDone, setsDoneActive, routineIds, sessionLoadLabel } from '../lib/history.js'
 import { fmtNum, fmtDate, todayISO, isoOf, weekKey, DAYS } from '../lib/format.js'
 import { t, dateLocale } from '../lib/i18n.js'
-import { bwSheet, goalSheet, dayOverrideSheet, plannedDaySheet, calendarSheet, agendaSheet, activityLogSheet, readinessSheet, missedSessionsSheet, homeShortcutsSheet, startFlow, loadStarterPlan, bwDeltaColor } from '../sheets.jsx'
+import { bwSheet, goalSheet, dayOverrideSheet, plannedDaySheet, calendarSheet, agendaSheet, activityLogSheet, readinessSheet, missedSessionsSheet, homeShortcutsSheet, startFlow, loadStarterPlan, bwDeltaColor, planImportSheet } from '../sheets.jsx'
 import LineChart from '../components/LineChart.jsx'
 import Icon from '../components/Icon.jsx'
 import { Button } from '../components/ui.jsx'
@@ -14,6 +14,7 @@ import { useCoachStatus } from '../lib/coach-api.js'
 import { DEMO } from '../lib/demo.js'
 import { MOBILE } from '../lib/mobile.js'
 import { missedSessions } from '../lib/activities.js'
+import { api } from '../lib/api.js'
 
 // A job in flight or a proposal waiting is the only reason the Coach interrupts Home. When it
 // has nothing to say it renders nothing at all — and it only polls while Home is on screen.
@@ -45,6 +46,8 @@ export default function Home() {
   const nav = useNavigate()
   const S = useStore(s => s.S)
   const user = useStore(s => s.user)
+  const [pt, setPt] = useState(null)
+  useEffect(() => { if (user) api('/api/pt').then(setPt).catch(() => {}) }, [user?.id])
   const config = useStore(s => s.config)
   const syncConflict = useStore(s => s.syncConflict)
   const canUndo = useStore(s => !!s.undoState)
@@ -97,6 +100,14 @@ export default function Home() {
     </div>
 
     {syncConflict && <div className="card tappable" style={{ borderColor: 'var(--orange)' }} onClick={() => nav('/settings/sync')}><div className="row between"><div><b>Sync needs your choice</b><div className="small dim">This profile changed on another device.</div></div><Icon name="chevronRight" /></div></div>}
+
+    {pt && (pt.goal || pt.message || pt.plan) && <div className="card" style={{ borderColor: pt.plan ? 'var(--acc)' : undefined }}>
+      <div className="row between"><h2 style={{ margin: 0 }}>{t('From your PT')}</h2>{pt.status && <span className="tag acc">{pt.status}</span>}</div>
+      {pt.goal && <div className="small" style={{ marginTop: 10 }}><b>{t('Current goal')}:</b> {pt.goal}</div>}
+      {pt.message && <div className="exnote" style={{ marginTop: 9 }}>{pt.message}</div>}
+      {pt.plan && <><div className="small dim" style={{ margin: '10px 0 8px' }}>{t('A new plan is ready. Review it before adding anything.')}</div>
+        <Button variant="primary" icon="download" onClick={() => planImportSheet(pt.plan.bundle, () => api('/api/pt/plan/clear', { method: 'POST', body: '{}' }).then(() => setPt(x => ({ ...x, plan: null }))))}>{t('Review assigned plan')}</Button></>}
+    </div>}
 
     <div className="card">
       <div className="row between" style={{ marginBottom: 8 }}>

@@ -51,6 +51,7 @@ let db = { users: [], creds: [], subs: [], invites: [] };
 try { db = JSON.parse(fs.readFileSync(dbFile, 'utf8')); } catch {}
 db.subs = db.subs || [];
 db.invites = db.invites || [];
+db.ptProfiles = db.ptProfiles || {};
 const isAdmin = user => !!user && (user.admin === true || ADMIN_UIDS.includes(user.id));
 function saveDb() { atomicWrite(dbFile, JSON.stringify(db, null, 2)); }
 function atomicWrite(file, content) {
@@ -498,6 +499,19 @@ const routes = {
   },
 
   /* ---------- admin dashboard ---------- */
+  'GET /api/pt': async (req, res) => {
+    const user = readSession(req); if (!user) return json(res, 401, { error: 'not signed in' });
+    const p = db.ptProfiles[user.id] || {};
+    json(res, 200, { status: p.status || '', goal: p.goal || '', message: p.message || '', plan: p.plan || null });
+  },
+
+  'POST /api/pt/plan/clear': async (req, res) => {
+    const user = readSession(req); if (!user) return json(res, 401, { error: 'not signed in' });
+    const p = db.ptProfiles[user.id];
+    if (p) { delete p.plan; saveDb(); }
+    json(res, 200, { ok: true });
+  },
+
   // One row per user, cheap enough for a personal instance (reads each state file once).
   'GET /api/admin/users': async (req, res) => {
     if (!requireAdmin(req, res)) return;
@@ -527,6 +541,7 @@ const routes = {
     const S = readState(u.id) || {};
     json(res, 200, {
       user: { id: u.id, name: u.name, created: u.created || null, disabled: !!u.disabled, admin: isAdmin(u), invitedBy: u.invitedBy || null },
+      pt: db.ptProfiles[u.id] || {},
       unit: S.unit || 'kg',
       lastSync: S._ts || null,
       routines: (S.routines || []).map(r => ({ id: r.id, name: r.name, emoji: r.emoji, count: (r.ex || []).length })),
@@ -545,6 +560,38 @@ const routes = {
     if (u.disabled) presence.delete(u.id);   // drop them off "training now" at once
     saveDb();
     json(res, 200, { ok: true, id: u.id, disabled: u.disabled });
+  },
+
+  'POST /api/admin/user/pt': async (req, res) => {
+    const admin = requireAdmin(req, res); if (!admin) return;
+    const body = await readBody(req);
+    const u = db.users.find(x => x.id === body.id);
+    if (!u) return json(res, 404, { error: 'no such user' });
+    const prev = db.ptProfiles[u.id] || {};
+    db.ptProfiles[u.id] = {
+      ...prev,
+      status: ['onboarding', 'active', 'paused', 'complete'].includes(body.status) ? body.status : '',
+      goal: String(body.goal || '').trim().slice(0, 300),
+      message: String(body.message || '').trim().slice(0, 1000),
+      privateNotes: String(body.privateNotes || '').trim().slice(0, 4000),
+      updatedAt: new Date().toISOString(), updatedBy: admin.id
+    };
+    saveDb();
+    json(res, 200, { ok: true, pt: db.ptProfiles[u.id] });
+  },
+
+  'POST /api/admin/user/plan': async (req, res) => {
+    const admin = requireAdmin(req, res); if (!admin) return;
+    const body = await readBody(req);
+    const u = db.users.find(x => x.id === body.id);
+    if (!u) return json(res, 404, { error: 'no such user' });
+    const plan = body.plan;
+    if (!plan || !Array.isArray(plan.routines) || !Number.isInteger(plan.routineCount)) return json(res, 400, { error: 'invalid plan' });
+    const p = db.ptProfiles[u.id] = db.ptProfiles[u.id] || {};
+    p.plan = { bundle: plan, assignedAt: new Date().toISOString(), assignedBy: admin.id };
+    saveDb();
+    sendPush(u.id, { title: 'Your PT assigned a plan', body: 'Open OpenGym to review and add it.', tag: 'pt-plan', url: '#/home' });
+    json(res, 200, { ok: true });
   },
 
   'GET /api/admin/invites': async (req, res) => {

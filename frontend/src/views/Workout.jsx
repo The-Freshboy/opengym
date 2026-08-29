@@ -14,6 +14,7 @@ import Icon from '../components/Icon.jsx'
 import { Button, Check, NumberField, TextArea } from '../components/ui.jsx'
 import { nextPrescription, applyPrescription } from '../lib/progression.js'
 import { glyphOf } from '../lib/glyphs.js'
+import YouTubeDemo from '../components/YouTubeDemo.jsx'
 
 /* ---------- start chooser (no active workout) ---------- */
 function StartChooser() {
@@ -103,6 +104,7 @@ function ExerciseBlock({ entryIdx, compact, editing, onToggle, onField, onAddSet
   )
   return <>
     <Media ex={ex} key={entry.id} compact={compact} minimizable={!editing} static={editing} />
+    <YouTubeDemo url={entry.target?.video || ex.video} title={ex.n} compact />
     <div className="row between" style={{ marginBottom: 6 }}>
       <div style={{ fontSize: compact ? 17 : 20, fontWeight: 600, letterSpacing: '-.02em', textTransform: 'capitalize', lineHeight: 1.2 }}>{ex.n}</div>
       <button className="iconbtn" aria-label={t('Details')} onClick={() => exerciseDetailSheet(ex)}><Icon name="info" /></button>

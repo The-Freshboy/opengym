@@ -22,6 +22,8 @@ import { estimate1RM, best1RM, is1RMRecord, REP_CAP } from './lib/onerm.js'
 import { nextPrescription, applyPrescription, policyFor, defaultIncrement, POLICIES_FOR, POLICY_NAME, POLICY_DESC } from './lib/progression.js'
 import { MOBILE, shareExport } from './lib/mobile.js'
 import { prepareCompletedWorkoutEdit, recalculateCompletedWorkoutHistory, recalculateExerciseWeights, removeCompletedWorkout } from './lib/completed-workout-edit.js'
+import { canonicalYouTubeUrl } from './lib/youtube.js'
+import YouTubeDemo from './components/YouTubeDemo.jsx'
 
 const S = () => useStore.getState().S
 const update = (...a) => useStore.getState().update(...a)
@@ -291,6 +293,7 @@ function ExerciseDetail({ ex, close }) {
   return <>
     <h3 className="capitalize">{ex.n}</h3>
     <Media ex={ex} />
+    <YouTubeDemo url={ex.video} title={ex.n} />
     <div className="row" style={{ gap: 6, flexWrap: 'wrap', margin: '10px 0' }}>
       <span className="tag acc">{t(ex.bp)}</span>
       {ex.tg && <span className="tag"><Icon name="target" />{t(ex.tg)}</span>}
@@ -350,18 +353,21 @@ function CustomExForm({ existing, prefill, onDone, close }) {
   const [n, setN] = useState(existing ? existing.n : (prefill || ''))
   const [bp, setBp] = useState(existing ? existing.bp : '')
   const [desc, setDesc] = useState(existing ? (existing.desc || '') : '')
+  const [video, setVideo] = useState(existing ? (existing.video || '') : '')
   const save = () => {
     const name = n.trim()
     if (!name) { toast(t('Give it a name')); return }
     if (!bp) { toast(t('Pick a body part')); return }
     const dup = allExercises(S()).find(e => e.n.toLowerCase() === name.toLowerCase() && e.id !== (existing || {}).id)
     if (dup) { toast(t('“{0}” already exists', dup.n)); return }
+    const videoUrl = video.trim() ? canonicalYouTubeUrl(video) : null
+    if (video.trim() && !videoUrl) { toast(t('Enter a valid secure YouTube link')); return }
     const d = desc.trim().slice(0, 1000)
     let id = existing && existing.id
-    if (existing) update(s => { const c = (s.customEx || []).find(x => x.id === id); if (c) { c.n = name; c.bp = bp; c.desc = d } })
+    if (existing) update(s => { const c = (s.customEx || []).find(x => x.id === id); if (c) { c.n = name; c.bp = bp; c.desc = d; if (videoUrl) c.video = videoUrl; else delete c.video } })
     else {
       id = 'c' + uid()
-      update(s => { (s.customEx = s.customEx || []).push({ id, n: name, bp, desc: d, tg: '', eq: 'custom', custom: true }) })
+      update(s => { (s.customEx = s.customEx || []).push({ id, n: name, bp, desc: d, ...(videoUrl ? { video: videoUrl } : {}), tg: '', eq: 'custom', custom: true }) })
     }
     close()
     toast(existing ? t('Saved') : t('“{0}” created', name))
@@ -377,6 +383,10 @@ function CustomExForm({ existing, prefill, onDone, close }) {
     {bp === 'cardio' && <div className="small dim row" style={{ marginBottom: 10, gap: 5 }}><Icon name="figureRun" style={{ fontSize: 13 }} />{t('Cardio exercises log time + speed instead of weight × reps.')}</div>}
     <textarea className="input" rows={4} maxLength={1000} placeholder={t('Description (optional) — setup, cues, anything you want to remember')}
       value={desc} onChange={e => setDesc(e.target.value)} />
+    <input className="input" type="url" inputMode="url" autoCapitalize="none" autoCorrect="off"
+      style={{ marginTop: 10 }} placeholder={t('YouTube demonstration link (optional)')}
+      value={video} onChange={e => setVideo(e.target.value)} />
+    <div className="small dim" style={{ margin: '6px 2px 0' }}>{t('Only the link is stored. The video loads after the client taps play.')}</div>
     <div style={{ height: 14 }} />
     <Button variant="primary" onClick={save}>{existing ? t('Save') : t('Create exercise')}</Button>
     {existing && <><div style={{ height: 8 }} /><Button variant="danger" icon="trash" onClick={() => { close(); deleteCustomEx(existing) }}>{t('Delete exercise')}</Button></>}
@@ -495,24 +505,28 @@ function ExConfig({ ex, existing, onSave, onDelete, close, routine, addLabel }) 
   const cardio = isCardio(ex.id)
   const speed = cardioHasSpeed(ex.id)
   const [c, setC] = useState(existing || defaultConfig(ex.id))
+  const [video, setVideo] = useState((existing && existing.video) || ex.video || '')
   // Cardio keeps its own duration+speed form; the reps/time choice (issue #16) is offered for
   // everything else, which is where the gap was — planks, hangs, wall sits, loaded carries.
   const mode = cardio ? 'cardio' : modeOf({ ...c, id: ex.id })
   // Keep whatever the other mode already had (sets, weight) and fill only what is missing.
   const setMode = m => setC(x => ({ ...defaultConfig(ex.id, m), ...x, mode: m }))
   const save = () => {
-    close()
+    const videoUrl = video.trim() ? canonicalYouTubeUrl(video) : null
+    if (video.trim() && !videoUrl) { toast(t('Enter a valid secure YouTube link')); return }
     const sets = Math.max(1, Math.round(c.sets) || (cardio ? 1 : 3))
     // Only carry progression settings that differ from the inherited default, so a plan file
     // stays readable and "follow the routine" keeps meaning exactly that.
     const prog = {}
     if (c.prog) prog.prog = c.prog
     if (c.inc > 0) prog.inc = c.inc
-    if (cardio) onSave({ sets, min: Math.max(1, Math.round(c.min) || 20), ...(speed ? { speed: Math.max(0, c.speed || 8) } : {}) })
-    else if (mode === 'time') onSave({ sets, mode: 'time', sec: Math.max(1, Math.round(c.sec) || 45), weight: Math.max(0, c.weight || 0), ...prog })
+    const demo = videoUrl ? { video: videoUrl } : {}
+    close()
+    if (cardio) onSave({ sets, min: Math.max(1, Math.round(c.min) || 20), ...(speed ? { speed: Math.max(0, c.speed || 8) } : {}), ...demo })
+    else if (mode === 'time') onSave({ sets, mode: 'time', sec: Math.max(1, Math.round(c.sec) || 45), weight: Math.max(0, c.weight || 0), ...prog, ...demo })
     else {
       const reps = Math.max(1, Math.round(c.reps) || 10)
-      const out = { sets, mode: 'reps', reps, weight: Math.max(0, c.weight || 0), ...prog }
+      const out = { sets, mode: 'reps', reps, weight: Math.max(0, c.weight || 0), ...prog, ...demo }
       if (policyFor({ ...c, id: ex.id }, routine, 'reps') === 'double') out.repsMin = Math.min(reps, Math.max(1, Math.round(c.repsMin) || Math.max(1, reps - 2)))
       onSave(out)
     }
@@ -547,6 +561,11 @@ function ExConfig({ ex, existing, onSave, onDelete, close, routine, addLabel }) 
     {mode === 'time' && <div className="small dim" style={{ marginBottom: 18 }}>
       {t('A timer runs while you hold the set. Leave the weight at 0 for bodyweight holds.')}
     </div>}
+    <h4 className="sec">{t('Exercise demonstration')}</h4>
+    <input className="input" type="url" inputMode="url" autoCapitalize="none" autoCorrect="off"
+      placeholder={t('Paste a YouTube link (optional)')} value={video} onChange={e => setVideo(e.target.value)} />
+    <div className="small dim" style={{ margin: '6px 2px 14px' }}>{t('This video is attached to this exercise in the routine. The client chooses when to load it.')}</div>
+    <YouTubeDemo url={video} title={ex.n} compact />
     <ProgressionFields ex={ex} mode={mode} c={c} setC={setC} routine={routine} unit={st.unit} />
     <Button variant="primary" onClick={save}>{existing ? t('Save') : (addLabel || t('Add to routine'))}</Button>
     {ex.custom && <><div style={{ height: 8 }} /><Button icon="pencil" onClick={() => { close(); customExSheet(ex) }}>{t('Edit or delete this exercise')}</Button></>}
@@ -624,14 +643,15 @@ function PlanTools({ close }) {
   </>
 }
 
-export const planImportSheet = bundle => ui().openSheet(close => <PlanImport bundle={bundle} close={close} />)
+export const planImportSheet = (bundle, onApplied) => ui().openSheet(close => <PlanImport bundle={bundle} close={close} onApplied={onApplied} />)
 
-function PlanImport({ bundle, close }) {
+function PlanImport({ bundle, close, onApplied }) {
   const [schedule, setSchedule] = useState(false)
   const apply = () => {
     update(s => mergePlan(s, bundle, { schedule }))
     close()
     toast(t('Added {0} routines to your plan', bundle.routineCount))
+    onApplied && onApplied()
     nav('/plan')
   }
   return <>
