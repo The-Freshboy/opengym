@@ -1005,10 +1005,11 @@ function Agenda({ close }) {
     return done.length || planned.length ? { iso, done, planned } : null
   }).filter(Boolean)
   const weekHeading = iso => {
-    const key = weekKey(iso), current = weekKey(todayISO())
+    const key = weekKey(iso)
     const monday = new Date(iso + 'T12:00:00'); monday.setDate(monday.getDate() - ((monday.getDay() + 6) % 7))
     const sunday = new Date(monday); sunday.setDate(monday.getDate() + 6)
-    const diff = Math.round((new Date(key + 'T12:00:00') - new Date(current + 'T12:00:00')) / 604800000)
+    const currentMonday = new Date(todayISO() + 'T12:00:00'); currentMonday.setDate(currentMonday.getDate() - ((currentMonday.getDay() + 6) % 7))
+    const diff = Math.round((monday - currentMonday) / 604800000)
     const title = diff === 0 ? t('This week') : diff === -1 ? t('Last week') : diff === 1 ? t('Next week') : t('Week of {0}', fmtDate(isoOf(monday), true))
     return { key, title, range: `${fmtDate(isoOf(monday), true)} – ${fmtDate(isoOf(sunday), true)}` }
   }
