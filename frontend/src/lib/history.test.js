@@ -67,6 +67,12 @@ describe('setLabel', () => {
     registerCustom([])
   })
 
+  it('shows session body weight instead of zero volume', async () => {
+    const { sessionLoadLabel } = await import('./history.js')
+    expect(sessionLoadLabel({ vol: 0, bw: 82.5 }, 'kg')).toBe('Body weight 82.5 kg')
+    expect(sessionLoadLabel({ vol: 1200, bw: 82.5 }, 'kg')).toBe('1,200 kg')
+  })
+
   it('reads a legacy set with no config exactly as before', () => {
     expect(setLabel(LIFT, { w: 0, r: 0 })).toBe('0×0')
     expect(setLabel(CARDIO, {})).toBe('0 min @ 0 km/h')

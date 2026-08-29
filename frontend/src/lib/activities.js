@@ -18,6 +18,7 @@ export function makeActivity(input, now = Date.now()) {
     name: String(input.name || input.type || 'Activity').trim().slice(0, 80),
     activityType: input.type || 'Other', durationMin,
     intensity: Math.min(10, Math.max(1, Number(input.intensity) || 5)),
+    ...(Number(input.bw) > 0 ? { bw: Number(input.bw) } : {}),
     ...(input.location?.trim() ? { location: input.location.trim().slice(0, 120) } : {}),
     ...(input.grade?.trim() ? { grade: input.grade.trim().slice(0, 80) } : {}),
     ...(/climb|boulder/i.test(input.type || '') ? {
