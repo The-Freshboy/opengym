@@ -6,6 +6,12 @@ const payload = over => ({
   plan: { routines: [{ id: 'push', ex: [{ id: '0025', mode: 'reps', sets: 10 }] }], week: { 1: 'push', 4: 'push' } },
   window: { workouts: [] }, aggregates: { exercises: [] }, ...over
 });
+test('warm-up effort is not counted as working-set intensity', () => {
+  const p = payload({ window: { workouts: [{ entries: [{ id: '0025', sets: [{ done: true, type: 'warmup', rir: 0 }, { done: true, rir: 3 }] }] }] } });
+  const r = scientificReview(p, new Date('2026-08-28T00:00:00Z'));
+  assert.equal(r.measurements.completedByMuscle.pectorals.sets, 1);
+  assert.equal(r.measurements.completedByMuscle.pectorals.hardSets, 0);
+});
 
 test('scientific review measures scheduled weekly volume and cites versioned evidence', () => {
   const r = scientificReview(payload(), new Date('2026-08-28T00:00:00Z'));

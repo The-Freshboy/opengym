@@ -4,6 +4,14 @@ import { tempData, sampleState } from './helpers.mjs';
 
 tempData();
 const payload = await import('../coach/payload.js');
+test('warm-up tags reach the coach while copied historical sessions do not', () => {
+  const S = sampleState(); S.workouts[0].d = new Date().toISOString().slice(0, 10);
+  S.workouts[0].entries[0].sets[0].type = 'warmup';
+  const p = payload.build(S, 'owner', { kind: 'review' });
+  assert.equal(p.window.workouts[0].entries[0].sets[0].type, 'warmup');
+  S.workouts[0].copiedHistory = true;
+  assert.equal(payload.build(S, 'owner', { kind: 'review' }).window.workouts.length, 0);
+});
 
 /* The promise the consent screen makes is only as good as this test. It asserts on the
    *absence* of things, which is the awkward direction to test and the only one that matters:
