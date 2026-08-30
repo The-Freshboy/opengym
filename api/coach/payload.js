@@ -56,7 +56,7 @@ const modeOf = (cfg, ex) => {
 function readSession(entry, fallback) {
   const target = (entry && entry.target) || fallback || {};
   const mode = modeOf(target, LIB_BY_ID.get(entry?.id));
-  const sets = (entry && entry.sets) || [];
+  const sets = ((entry && entry.sets) || []).filter(s => s.type !== 'warmup');
   const planned = target.sets || sets.length;
   const enough = sets.length >= planned;
   if (mode === 'time') {
@@ -156,7 +156,7 @@ const effortOf = S => {
 const iso = d => d.toISOString().slice(0, 10);
 
 export function reviewWindow(S, since) {
-  const all = (S.workouts || []).filter(w => w && w.d);
+  const all = (S.workouts || []).filter(w => w && w.d && !w.copiedHistory);
   const cutoffDate = new Date(); cutoffDate.setDate(cutoffDate.getDate() - MAX_WEEKS * 7);
   const cutoff = iso(cutoffDate);
   const from = since && since > cutoff ? since : cutoff;
@@ -169,7 +169,7 @@ function aggregates(S, workouts) {
   const planCfg = new Map();
   (S.routines || []).forEach(r => (r.ex || []).forEach(e => planCfg.set(e.id, e)));
   (S.workouts || []).forEach(w => (w.entries || []).forEach(en => {
-    if (!en.sets?.some(s => s.done)) return;
+    if (!en.sets?.some(s => s.done && s.type !== 'warmup')) return;
     if (!byEx.has(en.id)) byEx.set(en.id, []);
     byEx.get(en.id).push(readSession(en, planCfg.get(en.id)));
   }));
@@ -189,9 +189,9 @@ function aggregates(S, workouts) {
   // Muscle coverage in the window, by body part — the "not trained" gap the Stats screen shows.
   const hit = {};
   workouts.forEach(w => (w.entries || []).forEach(en => {
-    if (!en.sets?.some(s => s.done)) return;
+    if (!en.sets?.some(s => s.done && s.type !== 'warmup')) return;
     const bp = LIB_BY_ID.get(en.id)?.bp;
-    if (bp) hit[bp] = (hit[bp] || 0) + en.sets.filter(s => s.done).length;
+    if (bp) hit[bp] = (hit[bp] || 0) + en.sets.filter(s => s.done && s.type !== 'warmup').length;
   }));
 
   const durations = workouts.map(w => (w.end && w.start ? Math.round((w.end - w.start) / 60000) : null)).filter(Boolean);
@@ -220,6 +220,7 @@ function cleanWorkout(w) {
       target: en.target ? { sets: en.target.sets, reps: en.target.reps, sec: en.target.sec, weight: en.target.weight } : null,
       sets: (en.sets || []).map(s => {
         const o = { done: !!s.done };
+        if (s.type === 'warmup') o.type = 'warmup';
         if (s.w != null) o.w = s.w;
         if (s.r != null) o.r = s.r;
         if (s.sec != null) o.sec = s.sec;
@@ -295,7 +296,7 @@ export function build(S, uid, opts = {}) {
     // start from evidence rather than optimism (B2/FR-20).
     const best = {};
     (S.workouts || []).forEach(w => (w.entries || []).forEach(en => en.sets?.forEach(s => {
-      if (s.done && s.w > 0) best[en.id] = Math.max(best[en.id] || 0, s.w);
+      if (s.done && s.type !== 'warmup' && s.w > 0) best[en.id] = Math.max(best[en.id] || 0, s.w);
     })));
     if (Object.keys(best).length) {
       p.history = {

@@ -29,7 +29,7 @@ function completedDose(workouts) {
   const out = {};
   for (const w of workouts || []) for (const e of w.entries || []) {
     const muscle = muscleOf(e); if (!muscle) continue;
-    const sets = (e.sets || []).filter(s => s.done); if (!sets.length) continue;
+    const sets = (e.sets || []).filter(s => s.done && s.type !== 'warmup'); if (!sets.length) continue;
     const m = (out[muscle] ||= { sets: 0, sessions: 0, hardSets: 0, effortSets: 0 });
     m.sets += sets.length; m.sessions++;
     for (const s of sets) {
@@ -64,7 +64,7 @@ export function scientificReview(payload, now = new Date()) {
     if (rate < .7) findings.push({ id: 'adherence-low', category: 'adherence', severity: 'action', confidence: 'medium', metric: { sessions, expected, rate: round(rate) }, reading: `${sessions} sessions were completed against roughly ${expected} planned in this review window. Improving plan fit may be more useful than adding work.`, sourceIds: ['acsm-2026'] });
   }
   if (sessions >= 6) {
-    const loads = (payload.window.workouts || []).map(w => (w.entries || []).reduce((n, e) => n + (e.sets || []).filter(s => s.done).length, 0));
+    const loads = (payload.window.workouts || []).map(w => (w.entries || []).reduce((n, e) => n + (e.sets || []).filter(s => s.done && s.type !== 'warmup').length, 0));
     const half = Math.floor(loads.length / 2), older = loads.slice(0, half).reduce((a, b) => a + b, 0), newer = loads.slice(half).reduce((a, b) => a + b, 0);
     if (older > 0 && newer / older > 1.3) findings.push({ id: 'workload-jump', category: 'recovery', severity: 'watch', confidence: 'medium', metric: { olderSets: older, newerSets: newer, change: round(newer / older - 1) }, reading: `Completed set volume rose by ${Math.round((newer / older - 1) * 100)}% between halves of the review window. Hold or reduce work if performance or recovery is worsening.`, sourceIds: ['acsm-2026'] });
   }
