@@ -1187,7 +1187,7 @@ function SessionRating({ w }) {
 function FinishSummary({ w, prs, e1prs = [], close }) {
   const st = useStore(s => s.S)
   const coachOn = !!useStore(s => s.config)?.coach?.enabled && !!st.coach?.consent?.agreedAt
-  return <div style={{ textAlign: 'center', padding: '8px 0' }}>
+  return <div className="finish-review" style={{ textAlign: 'center', padding: '8px 0' }}>
     <div style={{ fontSize: 44, display: 'flex', justifyContent: 'center', color: 'var(--acc)' }}><Icon name="trophy" /></div>
     <h3 style={{ margin: '8px 0' }}>{t('Workout complete!')}</h3>
     <div className="tiles" style={{ textAlign: 'left' }}>
@@ -1204,7 +1204,7 @@ function FinishSummary({ w, prs, e1prs = [], close }) {
     <BodyMap load={loadOfWorkouts([w])} body={st.body} />
     <SessionFeedback workoutId={w.id} />
     <div style={{ height: 14 }} />
-    <Button variant="primary" onClick={() => { close(); nav('/home') }}>{t('Nice!')}</Button>
+    <div className="finish-review-actions"><Button variant="primary" onClick={() => { close(); nav('/home') }}>{t('Finish review')}</Button></div>
   </div>
 }
 export function finishWorkout(incomplete = false) {
@@ -1275,6 +1275,6 @@ function doFinishWorkout() {
   if (editing) { toast(t('Workout updated')); nav('/history') }
   else {
     beep(snd(), 880, 0.15); beep(snd(), 1100, 0.15, 0.18); beep(snd(), 1320, 0.3, 0.36)
-    ui().openSheet(close => <FinishSummary w={w} prs={prs} e1prs={e1prs} close={close} />, { kind: 'center', locked: true })
+    ui().openSheet(close => <FinishSummary w={w} prs={prs} e1prs={e1prs} close={close} />, { locked: true })
   }
 }
