@@ -236,7 +236,7 @@ function CadenceCard({ coach, update }) {
   const mode = !cadence ? 'off' : cadence.weekly ? 'weekly' : 'every'
   const setMode = m => update(s => {
     const c = (s.coach = s.coach || emptyCoach())
-    c.cadence = m === 'off' ? 'off' : m === 'weekly' ? { weekly: { day: 0, time: '18:00' } } : { everyWorkouts: 4 }
+    c.cadence = m === 'off' ? 'off' : m === 'weekly' ? { weekly: { day: 0, time: '18:00', timezone: 'Australia/Sydney' } } : { everyWorkouts: 4 }
   })
   const patch = fn => update(s => { const c = (s.coach = s.coach || emptyCoach()); fn(c) })
 
@@ -252,6 +252,7 @@ function CadenceCard({ coach, update }) {
         { value: 'every', label: t('After every few workouts'), subtitle: t('As soon as you have logged enough') }
       ]} />
     {mode === 'weekly' && <>
+      <SelectRow icon="globe" title="Review timezone" value={cadence.weekly.timezone || useStore.getState().S.reminder?.tz || 'UTC'} onChange={value => patch(c => { c.cadence.weekly.timezone = value })} options={[...new Set(['Australia/Sydney', 'Australia/Adelaide', 'Australia/Brisbane', 'Australia/Perth', 'UTC', cadence.weekly.timezone || useStore.getState().S.reminder?.tz].filter(Boolean))].map(value => ({ value, label: value === 'Australia/Sydney' ? 'Canberra / Sydney (daylight saving aware)' : value }))} />
       <SelectRow icon="calendar" iconTint="var(--orange)" title={t('Day')}
         value={cadence.weekly.day}
         onChange={v => patch(c => { c.cadence = { weekly: { ...c.cadence.weekly, day: v } } })}

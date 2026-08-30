@@ -17,6 +17,8 @@ import { createStateStore, StateConflict } from './state-store.js';
 import { createRateLimiter } from './rate-limit.js';
 import { createPersonalNotifier } from './personal-notifications.js';
 import { integrationRoutes } from './integrations.js';
+import { browserWriteError, stateInputError, clientAddress } from './request-guards.js';
+import { validPushEndpoint, pushAgent } from './push-transport.js';
 
 const PORT = +(process.env.PORT || 3000);
 const DATA = process.env.DATA_DIR || '/data';
@@ -34,6 +36,7 @@ const INVITE_ONLY = /^(1|true|yes|on)$/i.test(process.env.INVITE_ONLY || '');
 const SESSION_DAYS = Math.max(1, +(process.env.SESSION_DAYS || 90) || 90);
 const MAX_BODY = 5 * 1024 * 1024;
 const INTEGRATIONS_ENABLED = /^(1|true|yes|on)$/i.test(process.env.INTEGRATIONS_ENABLED || '');
+const TRUST_PROXY = /^(1|true|yes|on)$/i.test(process.env.TRUST_PROXY || '');
 // Secure cookies require HTTPS; over plain http://localhost the flag would drop the cookie
 const SECURE = /^https:/i.test(ORIGIN) ? ' Secure;' : '';
 
@@ -83,24 +86,31 @@ webpush.setVapidDetails(VAPID_SUBJECT, vapid.publicKey, vapid.privateKey);
 
 async function sendPush(userId, payload) {
   const subs = db.subs.filter(s => s.userId === userId);
-  if (!subs.length) return;
+  if (!subs.length) return { sent: 0, failed: 0 };
   const body = JSON.stringify(payload);
   let dirty = false;
+  let sent = 0, failed = 0;
   await Promise.all(subs.map(async sub => {
     // urgency 'high' is the one lever we have over delivery speed — iOS/Android throttle
     // low-urgency background push more aggressively under battery-saving modes. TTL is left
     // at the library default (long) so a briefly-offline device still gets it once reconnected,
     // rather than risking it being dropped for the sake of shaving off latency that TTL doesn't
     // actually control anyway.
-    try { await webpush.sendNotification({ endpoint: sub.endpoint, keys: sub.keys }, body, { urgency: 'high' }); }
+    try {
+      if (!validPushEndpoint(sub.endpoint)) throw new Error('Invalid push destination');
+      await webpush.sendNotification({ endpoint: sub.endpoint, keys: sub.keys }, body, { urgency: 'high', agent: pushAgent, timeout: 15000 });
+      sent++;
+    }
     catch (e) {
-      console.error('push send failed', userId, e.statusCode, e.body || e.message);
+      failed++;
+      console.error('push send failed', userId, e.statusCode || 'transport');
       if (e.statusCode === 404 || e.statusCode === 410) {
         db.subs = db.subs.filter(s => s.endpoint !== sub.endpoint); dirty = true;
       }
     }
   }));
   if (dirty) saveDb();
+  return { sent, failed };
 }
 
 // Rest-timer alerts: client schedules on start/extend, cancels on skip or on-screen completion —
@@ -251,12 +261,16 @@ function readBody(req) {
     let size = 0; const chunks = [];
     req.on('data', d => {
       size += d.length;
-      if (size > MAX_BODY) { reject(new Error('body too large')); req.destroy(); return; }
+      if (size > MAX_BODY) { reject(Object.assign(new Error('body too large'), { status: 413 })); req.resume(); return; }
       chunks.push(d);
     });
     req.on('end', () => {
-      try { resolve(chunks.length ? JSON.parse(Buffer.concat(chunks).toString('utf8')) : {}); }
-      catch { reject(new Error('bad json')); }
+      try {
+        const parsed = chunks.length ? JSON.parse(Buffer.concat(chunks).toString('utf8')) : {};
+        if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('object required');
+        resolve(parsed);
+      }
+      catch { reject(Object.assign(new Error('bad json'), { status: 400 })); }
     });
     req.on('error', reject);
   });
@@ -279,6 +293,19 @@ setInterval(() => { for (const [k, v] of presence) if (Date.now() - v.updatedAt 
 /* ---------- routes ---------- */
 const routes = {
   'GET /api/health': async (req, res) => json(res, 200, { ok: true }),
+  'GET /api/diagnostics': async (req, res) => {
+    const user = readSession(req);
+    if (!user) return json(res, 401, { error: 'not signed in' });
+    const current = stateStore.read(user.id), S = current.state || {}, snapshots = stateStore.list(user.id), reviewer = coachJobs.readUser(user.id);
+    json(res, 200, {
+      build: process.env.APP_BUILD ? String(process.env.APP_BUILD).slice(0, 100) : null,
+      sync: { revision: current.revision, updatedAt: current.updatedAt },
+      snapshots: { count: snapshots.length, latestAt: snapshots[0]?.createdAt || null },
+      reviewer: { timezone: S.coach?.cadence?.weekly?.timezone || S.reminder?.tz || 'UTC', schedule: S.coach?.cadence || 'off', lastReviewAt: S.coach?.lastReview?.at || null, pending: !!reviewer.pending, job: reviewer.current?.state || null, lastOutcome: reviewer.history?.at(-1)?.outcome || null, dailyCapsTimezone: 'UTC' },
+      notifications: { ...personalNotifier.status(user.id), weeklySummary: !!S.personal?.weeklySummary },
+      integrations: { enabled: INTEGRATIONS_ENABLED }
+    });
+  },
 
   // Public config the login screen needs before anyone is signed in. `coach` is absent unless
   // the instance has both switched the Coach on and successfully connected a provider — the
@@ -413,9 +440,12 @@ const routes = {
     const user = readSession(req);
     if (!user) return json(res, 401, { error: 'not signed in' });
     const body = await readBody(req);
-    if (!body.state || typeof body.state !== 'object') return json(res, 400, { error: 'state required' });
+    const invalid = stateInputError(body.state);
+    if (invalid) return json(res, 400, { error: invalid });
     delete body.state.active;              // in-progress workouts stay device-local
     try {
+      const current = stateStore.read(user.id);
+      if ((!Number.isInteger(body.baseRevision) || body.baseRevision < 0) && current.state) throw new StateConflict(current);
       const saved = stateStore.write(user.id, body.state, body.baseRevision);
       json(res, 200, { ok: true, revision: saved.revision, updatedAt: saved.updatedAt, ts: body.state._ts || null });
     } catch (e) {
@@ -458,6 +488,8 @@ const routes = {
     const body = await readBody(req);
     const sub = body.subscription;
     if (!sub?.endpoint || !sub?.keys?.p256dh || !sub?.keys?.auth) return json(res, 400, { error: 'invalid subscription' });
+    if (!validPushEndpoint(sub.endpoint) || typeof sub.keys.p256dh !== 'string' || sub.keys.p256dh.length > 256 || typeof sub.keys.auth !== 'string' || sub.keys.auth.length > 256) return json(res, 400, { error: 'invalid push destination or keys' });
+    if (db.subs.filter(s => s.userId === user.id && s.endpoint !== sub.endpoint).length >= 20) return json(res, 409, { error: 'Too many push devices; remove an old subscription first' });
     db.subs = db.subs.filter(s => s.endpoint !== sub.endpoint);
     db.subs.push({ userId: user.id, endpoint: sub.endpoint, keys: sub.keys, created: new Date().toISOString() });
     saveDb();
@@ -476,8 +508,8 @@ const routes = {
   'POST /api/push/test': async (req, res) => {
     const user = readSession(req);
     if (!user) return json(res, 401, { error: 'not signed in' });
-    await sendPush(user.id, { title: 'openGym', body: 'Test notification ✅ — this is what alerts look like.', tag: 'test' });
-    json(res, 200, { ok: true });
+    const result = await sendPush(user.id, { title: 'openGym', body: 'Test notification ✅ — this is what alerts look like.', tag: 'test' });
+    json(res, result.sent ? 200 : 502, { ok: result.sent > 0, ...result, ...(result.sent ? {} : { error: result.failed ? 'Notification delivery failed' : 'No push device is subscribed' }) });
   },
 
   'POST /api/push/rest-timer': async (req, res) => {
@@ -675,14 +707,23 @@ http.createServer(async (req, res) => {
   const key = req.method + ' ' + url.pathname;
   const handler = routes[key];
   if (!handler) return json(res, 404, { error: 'not found' });
+  const blocked = browserWriteError(req, ORIGIN);
+  if (blocked) return json(res, blocked.status, { error: blocked.error });
+  if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method)) {
+    const user = readSession(req);
+    if (user) {
+      const retry = rateLimit(`write:${user.id}`, 120, 60000);
+      if (retry) return json(res, 429, { error: 'too many updates; try again shortly' }, { 'Retry-After': String(retry) });
+    }
+  }
   if (/^POST \/api\/(register|login)\//.test(key)) {
-    const ip = String(req.headers['x-forwarded-for'] || req.socket.remoteAddress || '').split(',')[0].trim();
+    const ip = clientAddress(req, TRUST_PROXY);
     const retry = rateLimit(`${ip}:${key}`, key.endsWith('/verify') ? 20 : 40, 60000);
     if (retry) return json(res, 429, { error: 'too many attempts — try again shortly' }, { 'Retry-After': String(retry) });
   }
   try { await handler(req, res); }
   catch (e) {
     console.error(key, e);
-    if (!res.headersSent) json(res, 500, { error: 'server error' });
+    if (!res.headersSent) json(res, [400, 413, 415].includes(e.status) ? e.status : 500, { error: [400, 413, 415].includes(e.status) ? e.message : 'server error' });
   }
 }).listen(PORT, () => console.log(`gym-api on :${PORT} (rpID=${RP_ID}, origin=${ORIGIN})`));

@@ -4,6 +4,8 @@ import { localTZ } from '../lib/format.js'
 import { registerCustom } from '../lib/exercises.js'
 import { DEMO, DEMO_SEEDED } from '../lib/demo.js'
 import { MOBILE, nativeLoad, nativeSave, syncReminder } from '../lib/mobile.js'
+import { syncDecision } from '../lib/sync-state.js'
+import { recordProgrammeChange } from '../lib/programme-history.js'
 
 const KEY = 'gym_state_v1'
 const REV_KEY = 'gym_server_revision'
@@ -41,6 +43,7 @@ export const useStore = create((set, get) => {
   let saveTm = null
   let pushFlight = null
   let integrationApplying = false
+  let sessionEpoch = 0
 
   // Mobile build: mirror the state into a file in the app's data directory (survives WebView
   // storage eviction) and keep the native reminder schedule in step with the weekly plan.
@@ -50,12 +53,14 @@ export const useStore = create((set, get) => {
   }
 
   const persist = (S, push = true) => {
-    S._ts = Date.now()
+    if (push) S._ts = Date.now()
     registerCustom(S.customEx)
     localStorage.setItem(KEY, JSON.stringify(S))
     set({ S })
     if (MOBILE) nativePersist()
     if (push && get().user) {
+      localStorage.setItem('gym_dirty', '1')
+      set({ syncStatus: 'pending', syncError: null })
       clearTimeout(pushTm)
       pushTm = setTimeout(() => get().pushState(), 1500)
     }
@@ -89,6 +94,7 @@ export const useStore = create((set, get) => {
     localStorage.removeItem(KEY)
     localStorage.removeItem('gym_before_full_restore')
     localStorage.removeItem('gym_reviewed_plan_recovery')
+    localStorage.removeItem('gym_last_resolved_conflict')
     persist(clone(DEF), false)
   }
 
@@ -97,6 +103,7 @@ export const useStore = create((set, get) => {
     undoState: null,
     user: (() => { try { return JSON.parse(localStorage.getItem('gym_user')) || null } catch { return null } })(),
     ready: false,
+    syncStatus: 'unknown', syncError: null, lastSyncedAt: null,
     syncConflict: (() => { try { return JSON.parse(localStorage.getItem(CONFLICT_KEY)) || null } catch { return null } })(),
     // Instance capabilities from GET /api/config. `config.coach` is present only when the
     // owner has both enabled the Coach and connected a provider — every Coach entry point in
@@ -108,6 +115,7 @@ export const useStore = create((set, get) => {
       const S = clone(get().S)
       const before = clone(S)
       mut(S)
+      recordProgrammeChange(before, S)
       set({ undoState: before })
       persist(S, push)
     },
@@ -125,6 +133,13 @@ export const useStore = create((set, get) => {
     setGuest(v) { if (v) localStorage.setItem('gym_guest', '1'); else localStorage.removeItem('gym_guest'); set({}) },
 
     setUser(u) {
+      if (get().user?.id !== u?.id) {
+        sessionEpoch++
+        clearTimeout(pushTm); pushTm = null
+        localStorage.removeItem(REV_KEY)
+        localStorage.removeItem(CONFLICT_KEY)
+        set({ syncConflict: null, syncStatus: 'unknown', syncError: null, lastSyncedAt: null })
+      }
       if (u) { localStorage.setItem('gym_user', JSON.stringify(u)); localStorage.removeItem('gym_guest') }
       else localStorage.removeItem('gym_user')
       set({ user: u })
@@ -132,26 +147,30 @@ export const useStore = create((set, get) => {
 
     async pushState() {
       if (!get().user) return
+      if (get().syncConflict) return
       clearTimeout(pushTm)
       pushTm = null
       if (integrationApplying) { localStorage.setItem('gym_dirty', '1'); return }
       if (pushFlight) return pushFlight
       const pushedUser = get().user.id
+      const pushedEpoch = sessionEpoch
       const pushedState = JSON.stringify(get().S)
+      set({ syncStatus: 'syncing', syncError: null })
       pushFlight = (async () => {
       try {
         const raw = localStorage.getItem(REV_KEY)
         const baseRevision = raw == null ? null : Number(raw)
         const result = await api('/api/data', { method: 'PUT', body: JSON.stringify({ state: JSON.parse(pushedState), baseRevision }) })
-        if (get().user?.id !== pushedUser) return
+        if (get().user?.id !== pushedUser || sessionEpoch !== pushedEpoch) return
         localStorage.setItem(REV_KEY, String(result.revision))
         if (JSON.stringify(get().S) === pushedState) localStorage.removeItem('gym_dirty')
         else { localStorage.setItem('gym_dirty', '1'); pushTm = setTimeout(() => get().pushState(), 1500) }
         localStorage.removeItem(CONFLICT_KEY)
-        set({ syncConflict: null })
+        set({ syncConflict: null, syncStatus: localStorage.getItem('gym_dirty') === '1' ? 'pending' : 'synced', lastSyncedAt: new Date().toISOString() })
       } catch (e) {
-        if (get().user?.id !== pushedUser) return
+        if (get().user?.id !== pushedUser || sessionEpoch !== pushedEpoch) return
         localStorage.setItem('gym_dirty', '1')
+        set({ syncStatus: 'error', syncError: e.message || 'Connection failed' })
         if (e.status === 409 && e.data?.current) {
           const conflict = { detectedAt: new Date().toISOString(), local: clone(get().S), server: e.data.current }
           localStorage.setItem(CONFLICT_KEY, JSON.stringify(conflict))
@@ -164,7 +183,9 @@ export const useStore = create((set, get) => {
 
     // Server approval is a revision-checked mutation. Pause debounced pushes until its
     // result is installed; if local edits occur meanwhile, retain both copies for review.
-    async approveIntegrationProposal({ id, revision, localState }) {
+    approveIntegrationProposal(args) { return get().applyReviewedServerChange({ ...args, kind: 'proposal' }) },
+    restoreSnapshot(args) { return get().applyReviewedServerChange({ ...args, kind: 'snapshot' }) },
+    async applyReviewedServerChange({ id, revision, localState, kind }) {
       if (!get().user || integrationApplying) throw new Error('Sign in and wait for the current request to finish.')
       clearTimeout(pushTm); pushTm = null
       if (pushFlight) await pushFlight
@@ -173,56 +194,87 @@ export const useStore = create((set, get) => {
       }
       integrationApplying = true
       const userId = get().user.id
+      const approvalEpoch = sessionEpoch
       try {
-        const result = await api('/api/integrations/proposals/approve', { method: 'POST', body: JSON.stringify({ id, revision }) })
-        if (get().user?.id !== userId) throw new Error('The profile changed. Sign in to the original profile to see its updated programme.')
+        const result = await api(kind === 'snapshot' ? '/api/data/snapshots/restore' : '/api/integrations/proposals/approve', { method: 'POST', body: JSON.stringify(kind === 'snapshot' ? { id, baseRevision: revision } : { id, revision }) })
+        if (get().user?.id !== userId || sessionEpoch !== approvalEpoch) throw new Error('The profile changed. Sign in to the original profile to see its updated programme.')
         if (JSON.stringify(get().S) !== localState) {
           const conflict = { detectedAt: new Date().toISOString(), local: clone(get().S), server: result }
           localStorage.setItem(CONFLICT_KEY, JSON.stringify(conflict)); localStorage.setItem('gym_dirty', '1')
           set({ syncConflict: conflict })
-          throw new Error('The proposal was approved, but this device changed meanwhile. Resolve both copies in Sync & recovery.')
+          throw new Error('The server change was applied, but this device changed meanwhile. Resolve both copies in Sync & recovery.')
         }
         localStorage.setItem(REV_KEY, String(result.revision))
         localStorage.removeItem('gym_dirty')
-        persist(Object.assign(clone(DEF), result.state), false)
-        set({ undoState: null })
+        const next = Object.assign(clone(DEF), result.state)
+        const recorded = recordProgrammeChange(get().S, next)
+        persist(next, recorded)
+        set({ undoState: null, syncStatus: recorded ? 'pending' : 'synced', lastSyncedAt: new Date().toISOString() })
         return result
       } finally { integrationApplying = false }
     },
     async pullState() {
+      if (!get().user || integrationApplying) return
+      if (pushFlight) await pushFlight
+      const userId = get().user?.id
+      const pullEpoch = sessionEpoch
+      if (!userId || get().syncConflict) return
+      set({ syncStatus: 'syncing', syncError: null })
       try {
         const { state, revision } = await api('/api/data')
-        localStorage.setItem(REV_KEY, String(revision || 0))
+        if (get().user?.id !== userId || sessionEpoch !== pullEpoch || integrationApplying || get().syncConflict) return
+        // A GET started before a later successful PUT must not roll its revision back.
+        const acknowledged = localStorage.getItem(REV_KEY)
+        if (acknowledged != null && revision < Number(acknowledged)) return
         const S = get().S
         const dirty = localStorage.getItem('gym_dirty') === '1'
-        if (state && (!hasData(S) || ((state._ts || 0) >= (S._ts || 0) && !dirty))) {
+        const raw = localStorage.getItem(REV_KEY)
+        const action = syncDecision({ local: S, server: state, dirty, baseRevision: raw == null ? null : Number(raw), revision: revision || 0, defaults: DEF, hasLocalData: hasData(S) })
+        if (action === 'conflict') {
+          const conflict = { detectedAt: new Date().toISOString(), local: clone(S), server: { state, revision } }
+          localStorage.setItem(CONFLICT_KEY, JSON.stringify(conflict))
+          localStorage.setItem('gym_dirty', '1')
+          set({ syncConflict: conflict, syncStatus: 'pending' })
+          return
+        }
+        if (action === 'push') { await get().pushState(); return }
+        localStorage.setItem(REV_KEY, String(revision || 0))
+        if (action === 'push-new') { await get().pushState(); return }
+        if (action === 'adopt' && state) {
           const active = S.active
           const next = Object.assign(clone(DEF), state)
           if (active) next.active = active
           persist(next, false)
-        } else if (hasData(S)) { await get().pushState() }
-      } catch (e) { /* offline — keep local */ }
+        }
+        localStorage.removeItem('gym_dirty')
+        set({ syncStatus: 'synced', lastSyncedAt: new Date().toISOString() })
+      } catch (e) { if (get().user?.id === userId && sessionEpoch === pullEpoch) set({ syncStatus: 'error', syncError: e.message || 'Connection failed' }) }
     },
 
     resolveSyncConflict(choice) {
       const conflict = get().syncConflict
       if (!conflict) return
+      if (get().S.active) throw new Error('Save or finish your active workout before resolving a conflict.')
+      // Preserve both branches locally as well as the server's automatic snapshot.
+      localStorage.setItem('gym_last_resolved_conflict', JSON.stringify({ ...conflict, local: clone(get().S) }))
       if (choice === 'server') {
         localStorage.setItem(REV_KEY, String(conflict.server.revision || 0))
         localStorage.removeItem('gym_dirty')
         localStorage.removeItem(CONFLICT_KEY)
         persist(Object.assign(clone(DEF), conflict.server.state || {}), false)
-        set({ syncConflict: null })
+        set({ syncConflict: null, syncStatus: 'synced', lastSyncedAt: new Date().toISOString() })
       } else {
         localStorage.setItem(REV_KEY, String(conflict.server.revision || 0))
         localStorage.removeItem(CONFLICT_KEY)
         set({ syncConflict: null })
-        persist(conflict.local, true)
+        persist(clone(get().S), true)
       }
     },
 
     async signOut() {
-      try { await get().pushState(); await api('/api/logout', { method: 'POST', body: '{}' }) } catch (e) { /* */ }
+      await get().pushState()
+      if (get().syncConflict || localStorage.getItem('gym_dirty') === '1') throw new Error('Your changes are not synced. Export a backup or resolve syncing before signing out.')
+      await api('/api/logout', { method: 'POST', body: '{}' })
       clearLocalSession()
     },
 
@@ -233,6 +285,7 @@ export const useStore = create((set, get) => {
     // would sign the user out of the one place the bump didn't reach. Caller reports the error.
     async signOutAll() {
       await get().pushState()   // never throws — stores gym_dirty and moves on when offline
+      if (get().syncConflict || localStorage.getItem('gym_dirty') === '1') throw new Error('Resolve syncing or export your changes before signing out.')
       await api('/api/logout/all', { method: 'POST', body: '{}' })
       clearLocalSession()
     },
@@ -281,7 +334,7 @@ export const useStore = create((set, get) => {
         // Re-stamp the reminder's timezone on every load — keeps it correct if you're travelling,
         // without needing to revisit Settings.
         const tz = localTZ()
-        if (get().S.reminder?.on && get().S.reminder.tz !== tz) {
+        if (get().S.reminder?.on && get().S.reminder.timezoneMode !== 'home' && get().S.reminder.tz !== tz) {
           get().update(s => { s.reminder = { ...s.reminder, tz } })
         }
       } catch (e) {

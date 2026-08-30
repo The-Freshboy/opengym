@@ -1,6 +1,7 @@
 // Pure helpers over the state object S (ported 1:1 from the vanilla app).
 import { todayISO, isoOf, weekKey, fmtNum } from './format.js'
 import { isCardio, cardioHasSpeed } from './exercises.js'
+import { repCountLabel } from './training-log.js'
 
 // How an exercise is logged (issue #16). This used to be derived from the body part alone,
 // which meant a plank or a farmer's carry could only be timed by filing it under cardio.
@@ -77,7 +78,7 @@ export function setLabel(id, s, cfg) {
   const mode = modeOf(cfg || { id })
   if (mode === 'cardio') return cardioHasSpeed(id) ? `${s.min || 0} min @ ${fmtNum(s.speed || 0)} km/h` : `${s.min || 0} min`
   if (mode === 'time') return fmtSec(s.sec) + (s.w > 0 ? ` · ${fmtNum(s.w)}` : '')
-  return `${fmtNum(s.w || 0)}×${s.r || 0}` + effortTail(s)
+  return `${s.type === 'warmup' ? 'W · ' : ''}${fmtNum(s.w || 0)}×${repCountLabel(s.r || 0, cfg?.repsConvention)}` + effortTail(s)
 }
 // Default config for a freshly added exercise.
 export function defaultConfig(id, mode) {
@@ -94,7 +95,7 @@ export function exLine(cfg, unit) {
   const load = cfg.weight ? ' · ' + fmtNum(cfg.weight) + ' ' + unit : ''
   if (mode === 'cardio') return cardioHasSpeed(cfg.id) ? `${n} × ${cfg.min || 20} min @ ${fmtNum(cfg.speed || 8)} km/h` : `${n} × ${cfg.min || 20} min`
   if (mode === 'time') return `${n} × ${fmtSec(cfg.sec || 45)}${load}`
-  return `${n} × ${cfg.reps}${load}`
+  return `${n} × ${repCountLabel(cfg.reps, cfg.repsConvention)}${load}`
 }
 
 // Drop superset ids that no longer have an adjacent partner (after unlink/reorder/remove).
@@ -118,8 +119,8 @@ export function bestWeightFor(S, exId) {
   let best = 0
   S.workouts.forEach(w => w.entries.forEach(e => {
     if (e.id === exId) {
-      e.sets.forEach(s => { if (s.done && s.w > best) best = s.w })
-      if (e.topW && e.topW > best) best = e.topW
+      e.sets.forEach(s => { if (s.done && s.type !== 'warmup' && s.w > best) best = s.w })
+      if (!e.sets.some(s => s.type === 'warmup') && e.topW && e.topW > best) best = e.topW
     }
   }))
   return best

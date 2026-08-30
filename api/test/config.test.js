@@ -167,3 +167,13 @@ test('weekly does not fire twice on the same day', () => {
   });
   assert.equal(cadence.isDue(coach, S, { date: '2026-07-26', hhmm: '18:00', weekday: 0 }), false);
 });
+
+test('weekly catches up later that day and deduplicates in Canberra local date', () => {
+  const S = sampleState();
+  S.workouts = [{ d: '2026-08-30', end: Date.now() }];
+  const coach = coachWith({ cadence: { weekly: { day: 0, time: '19:00', timezone: 'Australia/Sydney' } } });
+  const now = { date: '2026-08-30', weekday: 0, hhmm: '20:30' };
+  assert.equal(cadence.isDue(coach, S, now), true);
+  coach.lastReview = { at: Date.parse('2026-08-30T09:00:00Z') };
+  assert.equal(cadence.isDue(coach, S, now), false);
+});

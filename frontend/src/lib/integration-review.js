@@ -1,8 +1,7 @@
 import { PLAN_FIELDS } from './backup-review.js'
+import { samePersistedState } from './sync-state.js'
 
-const canonical = value => Array.isArray(value) ? value.map(canonical) : value && typeof value === 'object'
-  ? Object.fromEntries(Object.keys(value).sort().filter(key => key !== '_ts').map(key => [key, canonical(value[key])])) : value
-export const sameIntegrationState = (a, b) => JSON.stringify(canonical(a)) === JSON.stringify(canonical(b))
+export const sameIntegrationState = samePersistedState
 
 // Show every changed entity, not only the first few exercise names in a summary.
 export function integrationChanges(before, after) {

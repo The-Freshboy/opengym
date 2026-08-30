@@ -8,6 +8,36 @@ const routine = { id: 'r', name: 'A', ex: [cfg] }
 const state = (n = 3) => ({ unit: 'kg', routines: [structuredClone(routine)], week: {}, workouts: ['2026-08-20', '2026-08-23', '2026-08-27'].slice(0, n).map((d, i) => ({ id: 'w' + i, d, routineId: 'r', unit: 'kg', entries: [{ id: cfg.id, target: { ...cfg }, sets: [{ w: 20, r: 8, done: true, rir: 3 }, { w: 20, r: 8, done: true, rir: 2 }] }] })), exWeights: { '0001': { w: 100 } } })
 const prepare = s => preparePersonalEntry(s, cfg, routine, '2026-08-30')
 describe('personal progression approval', () => {
+  it('compares three working-set exposures even when additional warm-ups are logged', () => {
+    const s = state()
+    s.workouts.forEach(w => w.entries[0].sets.unshift({ done: true, w: 10, r: 5, type: 'warmup' }))
+    const entry = prepare(s)
+    expect(entry.proposal.weight).toBe(22.5)
+    expect(entry.sets).toHaveLength(2)
+    expect(entry.sets[0].w).toBe(20)
+  })
+  it('does not treat a new per-side convention as equivalent history', () => {
+    expect(preparePersonalEntry(state(), { ...cfg, repsConvention: 'per-side' }, routine, '2026-08-30').proposal).toBeUndefined()
+  })
+  it('does not count copied completed history as independent progression evidence', () => {
+    const s = state(); s.workouts[2].copiedHistory = true
+    expect(prepare(s).proposal).toBeUndefined()
+    expect(exerciseHistory(s, cfg.id)).toHaveLength(3)
+  })
+  it('holds progression after nerve symptoms, warm-up composition or assisted context', () => {
+    const nerve = state(); nerve.workouts[2].feedback = { numbness: true }
+    expect(prepare(nerve).proposal).toBeUndefined(); expect(prepare(nerve).plan.safety).toBe(true)
+    const warm = state(); warm.workouts[2].entries[0].sets[0].type = 'warmup'
+    expect(prepare(warm).proposal).toBeUndefined()
+    const assisted = state(); assisted.workouts[2].entries[0].hangContext = { support: 'feet' }
+    expect(prepare(assisted).proposal).toBeUndefined()
+  })
+  it('does not carry loads across equipment profiles', () => {
+    const s = state(); s.workouts.forEach(w => w.entries[0].sets.forEach(x => { x.w = 80 }))
+    s.trainingPreferences = { activeEquipmentProfileId: 'hotel', equipmentProfiles: [{ id: 'hotel', name: 'Hotel' }] }
+    const e = prepare(s)
+    expect(e.sets[0].w).toBe(cfg.weight); expect(e.proposal).toBeUndefined()
+  })
   it('does not use a historical maximum as today’s working weight', () => { const e = prepare(state(1)); expect(e.sets[0].w).toBe(20); expect(e.proposal).toBeUndefined() })
   it('never advances from one or two sessions', () => { expect(prepare(state(1)).proposal).toBeUndefined(); expect(prepare(state(2)).proposal).toBeUndefined() })
   it('requires explicit acceptance and leaves the routine untouched', () => { const s = state(), before = structuredClone(s); const e = prepare(s); expect(e.proposal.weight).toBe(22.5); expect(e.sets[0].w).toBe(20); acceptPersonalProposal(e); expect(e.sets[0].w).toBe(22.5); expect(e.target.weight).toBe(22.5); expect(e.proposal.status).toBe('accepted'); expect(s).toEqual(before) })

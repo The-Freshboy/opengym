@@ -1,14 +1,15 @@
 import { modeOf, buildSets } from './history.js'
 import { nextPrescription, readSession, policyFor } from './progression.js'
+import { nerveSymptomsReported, equipmentKey, trainingContext } from './training-log.js'
 
 // These are conservative product rules, not a validated readiness/injury model.
 export const COMPARABLE_EXPOSURES = 3
 // Snapshot the saved prescription, independently of session targets. An explicit plan
 // edit takes precedence over a previously accepted suggestion or logged working load.
-const basePrescription = (cfg, routine) => JSON.stringify([modeOf(cfg), cfg.sets, cfg.reps, cfg.sec, cfg.min, cfg.speed, cfg.weight || 0, policyFor(cfg, routine), cfg.inc, cfg.repsMin])
+const basePrescription = (cfg, routine) => JSON.stringify([modeOf(cfg), cfg.sets, cfg.reps, cfg.sec, cfg.min, cfg.speed, cfg.weight || 0, policyFor(cfg, routine), cfg.inc, cfg.repsMin, ...(cfg.repsConvention ? [cfg.repsConvention] : [])])
 export function exerciseHistory(S, id, excludeId) {
   return (S.workouts || []).filter(w => w.id !== excludeId)
-    .flatMap(w => (w.entries || []).filter(e => e.id === id).map(entry => ({ ...entry, d: w.d, workoutId: w.id, routineId: w.routineId, feedback: w.feedback, rating: w.rating, sessionNote: w.note, incomplete: w.incomplete, variant: w.variant, unit: w.unit })))
+    .flatMap(w => (w.entries || []).filter(e => e.id === id).map(entry => ({ ...entry, d: w.d, workoutId: w.id, routineId: w.routineId, feedback: w.feedback, rating: w.rating, sessionNote: w.note, incomplete: w.incomplete, variant: w.variant, unit: w.unit, trainingContext: w.trainingContext, copiedHistory: w.copiedHistory })))
     .sort((a, b) => String(b.d).localeCompare(String(a.d)))
 }
 
@@ -16,11 +17,13 @@ export function preparePersonalEntry(S, cfg, routine, today) {
   const mode = modeOf(cfg)
   const base = basePrescription(cfg, routine)
   const sameBase = e => e?.basePrescription ? e.basePrescription === base : !!e?.target && basePrescription(e.target, routine) === base
-  const rows = exerciseHistory(S, cfg.id).filter(e => e.d <= today && modeOf({ ...e.target, id: e.id }) === mode && e.sets?.some(x => x.done))
+  const rows = exerciseHistory(S, cfg.id).filter(e => !e.copiedHistory && e.d <= today && modeOf({ ...e.target, id: e.id }) === mode && e.sets?.some(x => x.done && x.type !== 'warmup'))
+    .map(e => ({ ...e, sets: e.sets.filter(s => s.type !== 'warmup') }))
   // Do not seed working sets from an all-time record or another routine's prescription.
-  const last = rows.find(e => e.routineId === routine?.id && (!e.unit || e.unit === S.unit))
+  const contextKey = equipmentKey(trainingContext(S.trainingPreferences))
+  const last = rows.find(e => e.routineId === routine?.id && (!e.unit || e.unit === S.unit) && equipmentKey(e.trainingContext) === contextKey)
   const baselineState = { ...S, workouts: [], exWeights: {} }
-  const carry = sameBase(last) ? last : null
+  const carry = sameBase(last) && !last.hangContext ? { ...last, sets: last.sets.filter(s => s.type !== 'warmup') } : null
   const target = { ...cfg }
   if (carry?.basePrescription && policyFor(cfg, routine, mode) !== 'off') {
     // These are already accepted targets, not a new increase. Keep them until the
@@ -35,14 +38,18 @@ export function preparePersonalEntry(S, cfg, routine, today) {
   if (baseline.length && mode !== 'cardio') target.weight = baseline[0].w || 0
   const plan = { kind: 'hold', why: ['Targets unchanged. Adjust from your warm-up; no increase is automatic.'] }
   const entry = { id: cfg.id, sg: cfg.sg, target, plan, sets: baseline, basePrescription: base }
-  if (S.readiness?.[today]?.pain || rows.slice(0, 3).some(e => e.feedback?.jointDiscomfort === true)) {
-    plan.why = ['Joint discomfort was reported. No progression suggested; avoid aggravating work and discuss symptoms or instability with your Exercise Physiologist.']
+  if (S.readiness?.[today]?.pain || rows.slice(0, 3).some(e => e.feedback?.jointDiscomfort === true || nerveSymptomsReported(e.feedback))) {
+    plan.why = ['Joint discomfort or nerve symptoms were reported. No progression suggested; follow your Exercise Physiologist’s individual guidance.']
     plan.safety = true
     return entry
   }
   if (policyFor(cfg, routine, mode) === 'off' || mode === 'cardio') return entry
+  if (rows.slice(0, 3).some(e => e.hangContext)) {
+    plan.why = ['Assistance context needs individual comparison. Keep targets and review manually; no progression is suggested.']
+    return entry
+  }
   if (!last) { plan.why = ['No comparable history yet. Set a comfortable starting load; saved/default weights are not a tested baseline.']; return entry }
-  const fingerprint = e => JSON.stringify([e.routineId, e.unit || S.unit, modeOf({ ...e.target, id: e.id }), e.target?.sets, e.target?.reps, e.target?.sec, e.target?.prog || routine?.prog, e.target?.inc, e.target?.repsMin, e.sets?.map(s => s.w || 0)])
+  const fingerprint = e => JSON.stringify([e.routineId, equipmentKey(e.trainingContext), e.unit || S.unit, modeOf({ ...e.target, id: e.id }), e.target?.sets, e.target?.reps, e.target?.sec, e.target?.prog || routine?.prog, e.target?.inc, e.target?.repsMin, e.sets?.map(s => s.w || 0)])
   const recent = rows.slice(0, 3)
   const cutoff = new Date(today + 'T12:00:00Z'); cutoff.setUTCDate(cutoff.getUTCDate() - 42)
   const comparable = recent.length === 3 && recent.every(e => e.target && sameBase(e) && !e.incomplete && e.variant !== 'short' && e.d >= cutoff.toISOString().slice(0, 10) && e.routineId === routine?.id && fingerprint(e) === fingerprint(last))

@@ -9,7 +9,9 @@ import { Button } from '../components/ui.jsx'
 
 export default function PhysioReport() {
   const S = useStore(s => s.S), nav = useNavigate()
-  const [options, setOptions] = useState(() => { const from = new Date(); from.setDate(from.getDate() - 27); return { from: isoOf(from), to: todayISO(), notes: false, feedback: false, tests: true, plan: false } })
+  const update = useStore(s => s.update)
+  const [options, setOptions] = useState(() => { const from = new Date(); from.setDate(from.getDate() - 27); const saved = S.personal?.reportPreferences || {}; return { from: isoOf(from), to: todayISO(), notes: saved.notes === true, feedback: saved.feedback === true, tests: saved.tests !== false, plan: saved.plan === true } })
+  const [savedMessage, setSavedMessage] = useState('')
   const [busy, setBusy] = useState(false), [error, setError] = useState(''), [ready, setReady] = useState(null)
   const invalid = reportOptionsError(options)
   const report = useMemo(() => invalid ? null : preparePhysioReport(S, options, EXDB), [S, options, invalid])
@@ -46,10 +48,18 @@ export default function PhysioReport() {
   const canShare = ready && !MOBILE && navigator.canShare?.({ files: [new File([ready.blob], ready.filename, { type: 'application/pdf' })] })
   return <div className="narrow personal-page"><div className="hdr"><div><h1>Physio report</h1><p className="sub">Export your workouts to PDF</p></div><Button size="sm" onClick={() => nav('/personal')}>Back</Button></div>
     <section className="card"><h2>Choose what to share</h2><p className="small dim">Created on your device. No upload to an AI service and no API charge. The PDF contains private information; share it only with your intended recipient.</p>
+      <details><summary>Saved report preferences / EP appointment</summary>
+        <p className="small dim">Remembering notes or feedback also remembers that sharing choice. Review the checkboxes before every export.</p>
+        <Button onClick={() => { update(s => { s.personal ||= {}; s.personal.reportPreferences = { notes: options.notes, feedback: options.feedback, tests: options.tests, plan: options.plan } }); setSavedMessage('Sharing preferences saved to this profile.') }}>Remember current sharing choices</Button>
+        <Button onClick={() => { update(s => { if (s.personal) delete s.personal.reportPreferences }); change({ notes: false, feedback: false, tests: true, plan: false }); setSavedMessage('Private defaults restored.') }}>Restore private defaults</Button>
+        <label>Last EP appointment (optional)<input className="field" type="date" max={todayISO()} value={S.personal?.lastEPDate || ''} onChange={e => { const d = e.target.value; if (d && reportOptionsError({ from: d, to: todayISO() })) return; update(s => { s.personal ||= {}; s.personal.lastEPDate = d }) }} /></label>
+        <Button disabled={!S.personal?.lastEPDate} onClick={() => change({ from: S.personal.lastEPDate, to: todayISO() })}>Report since that appointment</Button>
+        {savedMessage && <p role="status" className="small">{savedMessage}</p>}
+      </details>
       <fieldset disabled={busy} style={{ border: 0, padding: 0, minWidth: 0 }}>
         <label>From<input className="field" type="date" value={options.from} onChange={e => change({ from: e.target.value })} /></label>
         <label>To<input className="field" type="date" value={options.to} onChange={e => change({ to: e.target.value })} /></label>
-        {[['notes', 'Include session and exercise notes'], ['feedback', 'Include joint discomfort, energy and session difficulty'], ['tests', 'Include logged test results'], ['plan', 'Append my current plan (clearly marked as planned, not completed)']].map(([key, label]) => <label key={key} className="personal-check"><input type="checkbox" checked={options[key]} onChange={e => change({ [key]: e.target.checked })} />{label}</label>)}
+        {[['notes', 'Include session and exercise notes and hold context'], ['feedback', 'Include nerve symptoms, joint discomfort, energy and session effort'], ['tests', 'Include logged test results'], ['plan', 'Append my current plan (clearly marked as planned, not completed)']].map(([key, label]) => <label key={key} className="personal-check"><input type="checkbox" checked={options[key]} onChange={e => change({ [key]: e.target.checked })} />{label}</label>)}
       </fieldset>
       <p className="small dim">Completed sets, loads, reps, hold times, cardio and recorded RIR/RPE are included. Account information, body weight and medication intake are excluded. Free-text notes may contain sensitive information if you choose to include them.</p>
       {invalid && <p role="alert">{invalid}</p>}

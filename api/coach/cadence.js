@@ -13,6 +13,10 @@ import * as jobs from './jobs.js';
 import * as cfgStore from './config.js';
 
 const TICK_MS = 60000;
+const localDate = (value, timeZone) => {
+  const p = Object.fromEntries(new Intl.DateTimeFormat('en-AU', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date(value)).map(p => [p.type, p.value]));
+  return `${p.year}-${p.month}-${p.day}`;
+};
 
 /** Weekly cadence fires within the minute; everyWorkouts fires as soon as the count is met. */
 export function isDue(coach, S, now) {
@@ -32,9 +36,11 @@ export function isDue(coach, S, now) {
     if (!now) return false;
     const wantDay = cadence.weekly.day ?? 0;
     const wantTime = cadence.weekly.time || '18:00';
-    if (now.weekday !== wantDay || now.hhmm !== wantTime) return false;
-    // One per day, even if the tick sees the same minute twice.
-    return new Date(lastAt).toISOString().slice(0, 10) !== now.date;
+    // Catch up later on the scheduled local day, rather than requiring one exact minute.
+    if (now.weekday !== wantDay || now.hhmm < wantTime) return false;
+    const tz = cadence.weekly.timezone || S.reminder?.tz || 'UTC';
+    const lastDate = lastAt ? localDate(lastAt, tz) : null;
+    return lastDate !== now.date;
   }
   return false;
 }
@@ -46,13 +52,19 @@ export function startCadence(deps) {
   const timer = setInterval(() => {
     if (!cfgStore.isEnabled() || !cfgStore.isConnected()) return;
     for (const user of deps.users()) {
+      if (user.disabled) continue;
       try {
         const S = jobs.readState(user.id);
         const coach = S?.coach;
         if (!coach?.consent?.agreedAt) continue;         // consent revoked ⇒ cadence stops
-        const tz = coach.cadence?.weekly ? (S.reminder?.tz || 'UTC') : null;
+        const tz = coach.cadence?.weekly ? (coach.cadence.weekly.timezone || S.reminder?.tz || 'UTC') : null;
         const now = tz ? deps.userNow(tz) : null;
         if (!isDue(coach, S, now)) continue;
+        const rec = jobs.readUser(user.id);
+        // Persisted job history prevents retries every minute when the frontend has not synced
+        // lastReview yet, including a failed attempt; manual retry remains available.
+        if (now && (rec.history || []).some(h => h.trigger === 'scheduled' && localDate(h.at, tz) === now.date)) continue;
+        if (rec.pending || rec.current) continue;
         jobs.enqueue(user.id, { kind: 'review', trigger: 'scheduled' });
         console.log('coach: scheduled review queued for', user.id);
       } catch (e) {

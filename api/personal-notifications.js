@@ -11,6 +11,7 @@ export function canberraWeek(now = new Date()) {
 export function createPersonalNotifier({ dataDir, users, readState, env = process.env, fetcher = fetch, now = () => new Date() }) {
   const file = path.join(dataDir, 'personal-notifications.json')
   let running = false
+  let lastError = null
   const configured = !!(env.NTFY_URL && env.NTFY_TOPIC_FILE && env.NTFY_TOKEN_FILE)
   const tick = async () => {
     if (running || !configured) return { sent: 0 }
@@ -32,15 +33,22 @@ export function createPersonalNotifier({ dataDir, users, readState, env = proces
         if (!['https:', 'http:'].includes(url.protocol) || url.username || url.password) throw new Error('Invalid ntfy server URL')
         const response = await fetcher(`${url.toString().replace(/\/$/, '')}/${encodeURIComponent(topic)}`, {
           method: 'POST', headers: { Authorization: `Bearer ${token}`, Title: 'OpenGym weekly summary', Tags: 'weight_lifter,calendar' },
-          body: 'Your weekly training summary is ready. Open OpenGym to see your progress and review any pending suggestions.', signal: AbortSignal.timeout(15000)
+          body: 'It is time to review your training week. Open OpenGym to check your logs and any pending suggestions.', signal: AbortSignal.timeout(15000)
         })
         if (!response.ok) throw new Error(`Weekly notification failed (HTTP ${response.status})`)
         state[user.id] = time.day
         fs.writeFileSync(file + '.tmp', JSON.stringify(state), { mode: 0o600 }); fs.renameSync(file + '.tmp', file)
         sent++
+        lastError = null
       }
       return { sent }
-    } finally { running = false }
+    } catch (e) { lastError = 'Last delivery failed; check server configuration and retry at the next tick.'; throw e }
+    finally { running = false }
   }
-  return { configured, tick }
+  const status = uid => {
+    let saved = {}
+    try { saved = JSON.parse(fs.readFileSync(file, 'utf8')) } catch (e) { if (e.code !== 'ENOENT') lastError = 'Notification delivery record unreadable.' }
+    return { configured, lastSentDay: saved[uid] || null, lastError, nextSchedule: 'Sunday 19:00', timezone: 'Australia/Sydney' }
+  }
+  return { configured, tick, status }
 }

@@ -44,7 +44,7 @@ export const scaleName = kind => EFFORT[kind].hd
 function eachDoneSet(S, fn) {
   ;(S.workouts || []).forEach(w =>
     (w.entries || []).forEach(e =>
-      (e.sets || []).forEach(s => { if (s.done) fn(s, w, e) })))
+      (e.sets || []).forEach(s => { if (s.done && s.type !== 'warmup') fn(s, w, e) })))
 }
 
 // A window in days, counted back from now. 0 = everything, which is also what an empty
@@ -53,7 +53,7 @@ const inWindow = (w, days) =>
   !days || (w.start || new Date(w.d).getTime()) > Date.now() - days * 86400000
 
 export const avgRir = sets => {
-  const vs = (sets || []).map(rirOf).filter(v => v != null)
+  const vs = (sets || []).filter(s => s.type !== 'warmup').map(rirOf).filter(v => v != null)
   return vs.length ? vs.reduce((a, b) => a + b, 0) / vs.length : null
 }
 

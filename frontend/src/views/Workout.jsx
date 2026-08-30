@@ -15,7 +15,7 @@ import { Button, Check, NumberField, TextArea } from '../components/ui.jsx'
 import { nextPrescription, applyPrescription } from '../lib/progression.js'
 import { glyphOf } from '../lib/glyphs.js'
 import YouTubeDemo from '../components/YouTubeDemo.jsx'
-import { RecentExerciseHistory, ProgressionApproval } from '../components/PersonalTraining.jsx'
+import { RecentExerciseHistory, ProgressionApproval, HangContext } from '../components/PersonalTraining.jsx'
 import { preparePersonalEntry } from '../lib/personal.js'
 
 /* ---------- start chooser (no active workout) ---------- */
@@ -119,6 +119,8 @@ function ExerciseBlock({ entryIdx, compact, editing, onToggle, onField, onAddSet
     </div>
     {entry.target?.mandatory && <span className="tag acc">Mandatory base exercise</span>}
     <RecentExerciseHistory id={entry.id} excludeId={S.active.editingWorkoutId} />
+    {entry.target?.repsConvention && <p className="small dim">Repetitions: {entry.target.repsConvention === 'per-side' ? 'enter reps for each side' : entry.target.repsConvention === 'total-both-sides' ? 'enter the total across both sides' : entry.target.repsConvention}. No counts are automatically converted.</p>}
+    {timed && <HangContext entryIdx={entryIdx} />}
     {!editing && <ProgressionApproval entryIdx={entryIdx} />}
     {plan && plan.why && plan.kind !== 'off' && <div className={'progline' + (plan.kind === 'deload' ? ' warn' : '')}>
       <Icon name={plan.kind === 'up' ? 'arrowUp' : plan.kind === 'deload' ? 'arrowDown' : 'lightbulb'} />
@@ -128,7 +130,7 @@ function ExerciseBlock({ entryIdx, compact, editing, onToggle, onField, onAddSet
       {/* the header carries the same eff3 sizing as the rows, or the labels drift off their columns */}
       <div className={'sethead' + (col3 ? ' eff3' : '') + (!col2 ? ' single' : '')}><span className="n-sp" /><span className="w-sp">{col1.hd}</span>{col2 && <span className="r-sp">{col2.hd}</span>}{col3 && <span className="eff-sp">{col3.hd}</span>}{timed && <span className="ck-sp" />}<span className="ck-sp" /></div>
       {entry.sets.map((s, i) => <div key={i} className={'setrow' + (s.done ? ' done' : '') + (col3 ? ' eff3' : '')}>
-        <div className="n">{i + 1}</div>
+        <div className="n"><button type="button" className="helpbtn" title="Toggle warm-up / working set" aria-label={`Set ${i + 1}: ${s.type === 'warmup' ? 'warm-up' : 'working'}; change type`} onClick={() => onField(i, 'type', s.type === 'warmup' ? 'working' : 'warmup')}>{s.type === 'warmup' ? 'W' : i + 1}</button></div>
         {cell(s, i, col1, 'w')}
         {col2 && cell(s, i, col2, 'r')}
         {col3 && cell(s, i, col3, 'eff')}
@@ -139,6 +141,7 @@ function ExerciseBlock({ entryIdx, compact, editing, onToggle, onField, onAddSet
         {!editing && <Check checked={s.done} onChange={() => onToggle(i)} />}
       </div>)}
       <div style={{ height: 8 }} />
+      <p className="small dim">Tap the set number to mark a warm-up (W). Warm-ups remain in your log but are excluded from working-set records and progression comparisons.</p>
       <div className="row">
         <Button size="sm" icon="minus" disabled={entry.sets.length <= 1} onClick={onRemoveSet}>{t('Remove set')}</Button>
         <Button size="sm" icon="plus" onClick={onAddSet}>{t('Add set')}</Button>
@@ -201,9 +204,18 @@ function ActiveWorkout() {
   const startTimed = (idx, i) => {
     if (editing) return
     const e = A.entries[idx]
+    const activeId = A.id
     useUI.getState().startWork(e.sets[i].sec || 45, exOr(e.id).n, elapsed => {
-      mutEntry(idx, en => { en.sets[i].sec = elapsed })
-      if (!useStore.getState().S.active.entries[idx].sets[i].done) toggle(idx, i)
+      if (useStore.getState().S.active?.id !== activeId) return
+      // A clock cannot know whether the hold was maintained. Explicit user confirmation
+      // is required, including after a timer was stopped early.
+      useUI.getState().openSheet(close => <><h3>Confirm timed set</h3><p>{elapsed} seconds elapsed. Did you actually maintain the hold? This is practice logging, not a validated test result.</p><Button variant="primary" disabled={elapsed <= 0} onClick={() => {
+        const active = useStore.getState().S.active
+        if (active?.id !== activeId || active.entries[idx]?.id !== e.id || !active.entries[idx]?.sets[i]) { close(); return }
+        mutEntry(idx, en => { en.sets[i].sec = elapsed; en.sets[i].timerConfirmed = true })
+        close()
+        if (!useStore.getState().S.active.entries[idx].sets[i].done) toggle(idx, i)
+      }}>Confirm {elapsed} seconds held</Button><div style={{ height: 8 }} /><Button onClick={close}>Do not log — adjust manually if needed</Button></>)
     })
   }
 
@@ -270,6 +282,8 @@ function ActiveWorkout() {
       <div className="row" style={{ gap: 2 }}>{!editing && <button className="iconbtn" style={{ color: S.keepAwake !== false ? 'var(--yellow)' : undefined }} aria-label={t('Keep screen awake')} title={t('Keep screen awake')} onClick={() => update(s => { s.keepAwake = s.keepAwake === false })}><Icon name="sun" /></button>}<button className="iconbtn" style={{ color: 'var(--acc)' }} aria-label={editing ? t('Save changes') : t('Finish')} onClick={() => finishWorkout()}><Icon name="check" /></button></div>
     </div>
     {!editing && <div className="wprog"><i style={{ width: (total ? done / total * 100 : 0) + '%' }} /></div>}
+    {A.trainingContext?.equipmentProfile && <p className="small dim">Equipment: {A.trainingContext.equipmentProfile.name}. This context does not substitute exercises or adjust loads.</p>}
+    {A.trainingContext?.plannedMinutes && <p className="small dim">Planned time: {A.trainingContext.plannedMinutes} minutes — a preference, not a required duration.</p>}
 
     {A.entries.length ? <>
       <div className="muted small" style={{ marginBottom: 6 }}>{isSuperset ? t('Superset {0} / {1}', unitIdx + 1, units.length) : t('Exercise {0} / {1}', unitIdx + 1, units.length)}</div>

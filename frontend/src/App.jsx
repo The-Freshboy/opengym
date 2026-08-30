@@ -14,6 +14,7 @@ import Modals from './components/Modals.jsx'
 import Toast from './components/Toast.jsx'
 import RestTimer from './components/RestTimer.jsx'
 import Login from './views/Login.jsx'
+import { syncLabel } from './lib/sync-state.js'
 import './personal.css'
 
 const Home = lazy(() => import('./views/Home.jsx'))
@@ -29,6 +30,7 @@ const Library = lazy(() => import('./views/Library.jsx'))
 const Settings = lazy(() => import('./views/Settings.jsx'))
 const SyncRecovery = lazy(() => import('./views/SyncRecovery.jsx'))
 const Integrations = lazy(() => import('./views/Integrations.jsx'))
+const ReviewStatus = lazy(() => import('./views/ReviewStatus.jsx'))
 const Admin = lazy(() => import('./views/Admin.jsx'))
 const Coach = lazy(() => import('./views/Coach.jsx'))
 const CoachIntake = lazy(() => import('./views/CoachIntake.jsx'))
@@ -48,6 +50,7 @@ function Shell() {
   const navigate = useNavigate()
   const loc = useLocation()
   const { S, user, ready } = useStore()
+  const syncStatus = useStore(s => s.syncStatus), syncConflict = useStore(s => s.syncConflict)
   const isGuest = useStore(s => s.isGuest())
   const editing = !!S.active?.editingWorkoutId
   const langV = useLang()   // re-renders the whole shell when the language (pack) changes
@@ -75,6 +78,7 @@ function Shell() {
           re-mounts the boundary, so the tab bar is always a way out */}
       <div id="app" className="vfade" key={loc.pathname}>
         <ErrorBoundary>
+          {authed && (!user || syncStatus === 'error' || syncStatus === 'pending' || syncConflict) && <button className="card small" style={{ width: '100%', padding: 10, textAlign: 'left' }} onClick={() => navigate(user ? '/settings/sync' : '/settings')}>{syncLabel({ user, syncStatus, syncConflict })}</button>}
           {!authed ? <Login /> : <Suspense fallback={<div className="empty">{t('Loading…')}</div>}>
             <Routes>
               <Route path="/home" element={<Home />} />
@@ -90,6 +94,7 @@ function Shell() {
               <Route path="/settings" element={<Settings />} />
               <Route path="/settings/sync" element={<SyncRecovery />} />
               <Route path="/settings/integrations" element={<Integrations />} />
+              <Route path="/settings/reviews" element={<ReviewStatus />} />
               {/* The Coach screens gate themselves on the instance config; the routes exist
                   unconditionally so a deep link from a notification lands somewhere sane
                   rather than on the catch-all. */}

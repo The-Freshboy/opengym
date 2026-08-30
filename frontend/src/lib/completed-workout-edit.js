@@ -15,10 +15,10 @@ export function prepareCompletedWorkoutEdit(workout) {
 }
 
 const entryBest = entry => {
-  let best = Number(entry?.topW) || 0
+  let best = entry?.sets?.some(s => s.type === 'warmup') ? 0 : Number(entry?.topW) || 0
   ;(entry?.sets || []).forEach(set => {
     const w = Number(set?.w)
-    if (set?.done && Number.isFinite(w) && w > best) best = w
+    if (set?.done && set.type !== 'warmup' && Number.isFinite(w) && w > best) best = w
   })
   return best
 }

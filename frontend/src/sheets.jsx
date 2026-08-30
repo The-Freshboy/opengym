@@ -26,6 +26,7 @@ import { MOBILE, shareExport } from './lib/mobile.js'
 import { prepareCompletedWorkoutEdit, recalculateCompletedWorkoutHistory, recalculateExerciseWeights, removeCompletedWorkout } from './lib/completed-workout-edit.js'
 import { canonicalYouTubeUrl } from './lib/youtube.js'
 import YouTubeDemo from './components/YouTubeDemo.jsx'
+import { duplicateKnownHistory } from './lib/training-log.js'
 
 const S = () => useStore.getState().S
 const update = (...a) => useStore.getState().update(...a)
@@ -529,6 +530,7 @@ function ExConfig({ ex, existing, onSave, onDelete, close, routine, addLabel }) 
     else {
       const reps = Math.max(1, Math.round(c.reps) || 10)
       const out = { sets, mode: 'reps', reps, weight: Math.max(0, c.weight || 0), ...prog, ...demo }
+      if (['per-side', 'total-both-sides'].includes(c.repsConvention)) out.repsConvention = c.repsConvention
       if (policyFor({ ...c, id: ex.id }, routine, 'reps') === 'double') out.repsMin = Math.min(reps, Math.max(1, Math.round(c.repsMin) || Math.max(1, reps - 2)))
       onSave(out)
     }
@@ -560,6 +562,7 @@ function ExConfig({ ex, existing, onSave, onDelete, close, routine, addLabel }) 
         <Stepper label={t('Weight ({0})', st.unit)} value={c.weight} step={2.5} onChange={v => setC(x => ({ ...x, weight: v }))} />
       </>}
     </div>
+    {mode === 'reps' && <label style={{ display: 'block', marginBottom: 14 }}>How are reps counted?<select className="field" value={c.repsConvention || ''} onChange={e => setC(x => ({ ...x, repsConvention: e.target.value }))}><option value="">Standard / not specified</option><option value="per-side">Reps for each side</option><option value="total-both-sides">Total across both sides</option></select><span className="small dim">This changes the label, not the number. Verify the rep target and original exercise instructions before saving.</span></label>}
     {mode === 'time' && <div className="small dim" style={{ marginBottom: 18 }}>
       {t('A timer runs while you hold the set. Leave the weight at 0 for bodyweight holds.')}
     </div>}
@@ -920,13 +923,12 @@ export const homeShortcutsSheet = () => ui().openSheet(close => <HomeShortcuts c
 /* ============================ workout detail ============================ */
 function DuplicateRecord({ w, close }) {
   const update = useStore(s => s.update); const [date, setDate] = useState(todayISO())
+  const [confirmed, setConfirmed] = useState(false)
   const save = () => {
-    update(s => {
-      const duration = Math.max(60000, (w.end || 0) - (w.start || 0)); const end = new Date(date + 'T12:00:00').getTime() + duration
-      s.workouts.push({ ...JSON.parse(JSON.stringify(w)), id: uid(), d: date, start: end - duration, end, prs: [] })
-    }); close(); toast(t('Copied to {0}', fmtDate(date)))
+    try { const copy = duplicateKnownHistory(w, date, todayISO(), uid(), confirmed); update(s => s.workouts.push(copy)); close(); toast(t('Copied to {0}', fmtDate(date))) }
+    catch (e) { toast(e.message) }
   }
-  return <><h3>{t('Repeat / duplicate')}</h3><div className="muted small" style={{ marginBottom: 12 }}>{w.name}</div><input className="field" type="date" value={date} onChange={e => setDate(e.target.value)} /><div style={{ height: 12 }} /><Button variant="primary" onClick={save}>{t('Duplicate to date')}</Button></>
+  return <><h3>Copy known completed history</h3><div className="muted small" style={{ marginBottom: 12 }}>{w.name}</div><p>This adds completed sets, not a future planned session. To train again, use Start. Copied history is excluded from progression evidence; session feedback is not copied.</p><input className="field" type="date" max={todayISO()} value={date} onChange={e => { setDate(e.target.value); setConfirmed(false) }} /><label style={{ display: 'block', marginTop: 12 }}><input type="checkbox" checked={confirmed} onChange={e => setConfirmed(e.target.checked)} /> I confirm I actually completed these sets on this date.</label><div style={{ height: 12 }} /><Button variant="primary" disabled={!confirmed} onClick={save}>Copy completed history</Button></>
 }
 const duplicateRecordSheet = w => ui().openSheet(close => <DuplicateRecord w={w} close={close} />)
 
@@ -1070,7 +1072,7 @@ export function WorkoutRow({ w, onClick }) {
 export function startFlow(routineId) {
   const r = S().routines.find(x => x.id === routineId)
   if (r?.ex.some(e => e.optional && !e.mandatory)) {
-    ui().openSheet(close => <><h3>Choose today’s session</h3><p className="small dim">Short sessions omit only exercises you marked optional. Mandatory and unmarked exercises stay, with the same planned sets.</p><Button variant="primary" onClick={() => { close(); bwSheet({ required: true, onDone: bw => beginWorkout(routineId, bw, 'full') }) }}>Full session · {r.ex.length} exercises</Button><div style={{ height: 8 }} /><Button onClick={() => { close(); bwSheet({ required: true, onDone: bw => beginWorkout(routineId, bw, 'short') }) }}>Short session · {sessionExercises(r, 'short').length} exercises</Button></>)
+    ui().openSheet(close => <><h3>Choose today’s session</h3><p className="small dim">Preferred: {S().trainingPreferences?.sessionMode || 'full'}. Short sessions omit only exercises you marked optional. Mandatory and unmarked exercises stay, with the same planned sets.</p><Button variant="primary" onClick={() => { close(); bwSheet({ required: true, onDone: bw => beginWorkout(routineId, bw, 'full') }) }}>Full session · {r.ex.length} exercises</Button><div style={{ height: 8 }} /><Button onClick={() => { close(); bwSheet({ required: true, onDone: bw => beginWorkout(routineId, bw, 'short') }) }}>Short session · {sessionExercises(r, 'short').length} exercises</Button></>)
   } else bwSheet({ required: true, onDone: bw => beginWorkout(routineId, bw) })
 }
 export function beginWorkout(routineId, bw, variant = 'full') {
@@ -1082,7 +1084,9 @@ export function beginWorkout(routineId, bw, variant = 'full') {
   const entries = sessionExercises(r, variant).map(cfg => preparePersonalEntry(st, cfg, r, todayISO()))
   cleanupSg(entries)
   update(s => {
-    s.active = { id: uid(), d: todayISO(), start: Date.now(), routineId, name: r ? r.name : t('Freestyle'), bw: bw || null, cur: 0, entries, variant, unit: st.unit }
+    const preferences = st.trainingPreferences || {}, profile = preferences.equipmentProfiles?.find(p => p.id === preferences.activeEquipmentProfileId)
+    const trainingContext = { ...(profile ? { equipmentProfile: JSON.parse(JSON.stringify(profile)) } : {}), ...(preferences.sessionMinutes > 0 ? { plannedMinutes: preferences.sessionMinutes } : {}) }
+    s.active = { id: uid(), d: todayISO(), start: Date.now(), routineId, name: r ? r.name : t('Freestyle'), bw: bw || null, cur: 0, entries, variant, unit: st.unit, trainingContext }
   })
   useUI.getState().stopRest()
   nav('/workout')
@@ -1097,7 +1101,7 @@ function TopWeight({ entryIdx, close }) {
   // to sit after every one of them.
   const entry = A ? A.entries[entryIdx] : null
   const ex = entry && EXIDX[entry.id]
-  const maxSet = entry ? Math.max(0, ...entry.sets.filter(s => s.done).map(s => s.w || 0)) : 0
+  const maxSet = entry ? Math.max(0, ...entry.sets.filter(s => s.done && s.type !== 'warmup').map(s => s.w || 0)) : 0
   const prevBest = entry ? Math.max((st.exWeights[entry.id] || {}).w || 0, bestWeightFor(st, entry.id)) : 0
   const [v, setV] = useState(entry ? (Math.max(maxSet, prevBest) || entry.target.weight || 0) : 0)
   useEffect(() => { if (!entry) close() }, [!entry])
@@ -1229,7 +1233,7 @@ function doFinishWorkout() {
   const prs = []
   const e1prs = []
   A.entries.forEach(e => {
-    const mx = Math.max(0, ...e.sets.filter(s => s.done).map(s => s.w))
+    const mx = Math.max(0, ...e.sets.filter(s => s.done && s.type !== 'warmup').map(s => s.w))
     if (mx > 0 && mx > bestWeightFor(historyForRecords, e.id)) prs.push(e.id)
     // A heavier estimate without a heavier top set is its own kind of progress —
     // same weight for more reps. Reported separately so it can't be read as a load PR.
@@ -1243,8 +1247,9 @@ function doFinishWorkout() {
     // `target` (what the session prescribed) is kept alongside the sets: without it a
     // finished workout cannot say whether it hit its reps, and a timed session reads back
     // as "0 reps". It is what the progression engine works from.
-    entries: A.entries.map(e => ({ id: e.id, sets: e.sets, topW: e.topW || null, target: e.target || null, ...(e.basePrescription ? { basePrescription: e.basePrescription } : {}), ...(e.proposal ? { progressionDecision: { status: e.proposal.status, evidenceDates: e.proposal.evidenceDates, decidedAt: e.proposal.decidedAt } } : e.progressionDecision ? { progressionDecision: e.progressionDecision } : {}), ...(e.note?.trim() ? { note: e.note.trim().slice(0, 500) } : {}) })).filter(e => e.sets.some(s => s.done)),
+    entries: A.entries.map(e => ({ id: e.id, sets: e.sets, topW: e.topW || null, target: e.target || null, ...(e.hangContext ? { hangContext: e.hangContext } : {}), ...(e.basePrescription ? { basePrescription: e.basePrescription } : {}), ...(e.proposal ? { progressionDecision: { status: e.proposal.status, evidenceDates: e.proposal.evidenceDates, decidedAt: e.proposal.decidedAt } } : e.progressionDecision ? { progressionDecision: e.progressionDecision } : {}), ...(e.note?.trim() ? { note: e.note.trim().slice(0, 500) } : {}) })).filter(e => e.sets.some(s => s.done)),
     variant: A.variant || preserved.variant || 'full', unit: editing ? preserved.unit : (A.unit || st.unit),
+    ...(A.trainingContext ? { trainingContext: A.trainingContext } : {}),
     ...(A.note?.trim() ? { note: A.note.trim().slice(0, 1000) } : {}),
     prs,
     ...(A.incomplete ? { incomplete: true } : {})
@@ -1252,7 +1257,7 @@ function doFinishWorkout() {
   w.vol = workoutVolume(w)
   update(s => {
     w.entries.forEach(e => {
-      const mx = Math.max(0, ...e.sets.filter(x => x.done).map(x => x.w || 0), e.topW || 0)
+      const mx = Math.max(0, ...e.sets.filter(x => x.done && x.type !== 'warmup').map(x => x.w || 0), e.sets.some(x => x.type === 'warmup') ? 0 : e.topW || 0)
       if (mx > 0) { const cur = s.exWeights[e.id]; if (!cur || mx > cur.w) s.exWeights[e.id] = { w: mx, d: w.d } }
     })
     if (editing) {

@@ -19,6 +19,9 @@ import { applyReviewedPlan, compareReviewedBackup, restoreReviewedPlan, snapshot
 import { validateFullBackup } from '../lib/recovery.js'
 import BackupPreview from '../components/BackupPreview.jsx'
 import { protectedPlanErrors } from '../lib/personal.js'
+import TrainingPreferences from '../components/TrainingPreferences.jsx'
+import { workoutCsv } from '../lib/workout-csv.js'
+import { EXIDX } from '../lib/exercises.js'
 
 const PLAN_RECOVERY_KEY = 'gym_reviewed_plan_recovery'
 
@@ -61,6 +64,15 @@ export default function Settings() {
     const blob = new Blob([json], { type: 'application/json' })
     const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; a.click(); URL.revokeObjectURL(a.href)
     toast(t('Backup exported'))
+  }
+  const exportCsv = async () => {
+    const csv = workoutCsv(S, Object.fromEntries(Object.values(EXIDX).map(e => [e.id, e.n])))
+    const filename = `opengym-workouts-${todayISO()}.csv`
+    try {
+      if (MOBILE) await shareExport(csv, filename)
+      else { const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' })); const link = document.createElement('a'); link.href = url; link.download = filename; link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000) }
+      toast('Completed-work CSV exported without private notes or symptoms.')
+    } catch (e) { toast(e.message || 'Export failed') }
   }
   const doReviewImport = ev => {
     const f = ev.target.files[0]; if (!f) return
@@ -172,7 +184,7 @@ export default function Settings() {
         <Row icon="personCircle" iconTint="var(--grey)" title={user.name} subtitle={t('Signed in with passkey — data syncs to this profile.')} />
         <Row icon="shield" iconTint="var(--blue)" title="Restricted integrations" subtitle="Manage read access and approve proposed programme changes" accessory="chevron" onClick={() => nav('/settings/integrations')} />
         {user.admin && <Row icon="wrench" iconTint="var(--indigo)" title={t('Admin dashboard')} accessory="chevron" onClick={() => nav('/admin')} />}
-        <Row icon="signOut" iconTint="var(--red)" title={t('Sign out')} danger onClick={() => confirmSheet({ title: t('Sign out?'), message: t('Your data is synced to your profile first, then cleared from this device.'), confirmText: t('Sign out'), danger: true, onConfirm: () => { signOut(); nav('/home') } })} />
+        <Row icon="signOut" iconTint="var(--red)" title={t('Sign out')} danger onClick={() => confirmSheet({ title: t('Sign out?'), message: t('Your data must sync successfully before it is cleared from this device.'), confirmText: t('Sign out'), danger: true, onConfirm: async () => { try { await signOut(); nav('/home') } catch (e) { toast(e.message) } } })} />
         <Row icon="shield" iconTint="var(--red)" title={t('Sign out everywhere')} subtitle={t('Ends this profile’s sessions on all your devices.')} danger onClick={signOutEverywhere} />
       </> : webauthnOK() ? <>
         <Row icon="sparkles" iconTint="var(--acc)" title={t('Create passkey profile')} subtitle={t('Keeps your data safe and separate per person.')} accessory="chevron" onClick={registerHere} />
@@ -201,6 +213,8 @@ export default function Settings() {
     </Section>
 
     {/* ---------- during a workout ---------- */}
+    <TrainingPreferences />
+    <Section title="Reviews & delivery"><Row icon="clock" title="Review and notification status" subtitle="Server coach, ntfy, external reviews, timezones and recovery" accessory="chevron" onClick={() => nav('/settings/reviews')} /></Section>
     <Section title={t('During a workout')} footer={wakeOK ? t('The screen stays on while a workout is running, so you don’t have to unlock your phone between sets.') : null}>
       <SelectRow icon="timer" iconTint="var(--orange)" title={t('Rest timer')}
         value={S.restSec} onChange={v => update(s => { s.restSec = v })}
@@ -282,6 +296,7 @@ export default function Settings() {
       {hasPlanRecovery && <Row icon="reset" iconTint="var(--orange)" title="Restore plan before last reviewed import" subtitle="Keeps workouts logged since the import" accessory="chevron" onClick={restorePlan} />}
       <Row icon="list" title="Exercise library" subtitle="Instructions, favourites, custom exercises and equipment alternatives" accessory="chevron" onClick={() => nav('/library')} />
       <Row icon="download" iconTint="var(--blue)" title={t('Export backup (JSON)')} accessory="chevron" onClick={doExport} />
+      <Row icon="download" iconTint="var(--blue)" title="Export completed workouts (CSV)" subtitle="Spreadsheet-friendly; excludes private notes and health feedback" accessory="chevron" onClick={exportCsv} />
       <Row icon="history" title="Recover pre-import copy" subtitle="Preview the copy saved on this device before the last full import" accessory="chevron" onClick={() => {
         try {
           const saved = JSON.parse(localStorage.getItem('gym_before_full_restore'))
@@ -351,7 +366,7 @@ function effortHelpSheet() {
     </div>
     <div className="dim small" style={{ lineHeight: 1.5, display: 'grid', gap: 8 }}>
       <div>{t('RIR counts the reps you left; RPE reads the same effort off a 10-point scale — so RPE ≈ 10 − RIR. Pick the one you already think in.')}</div>
-      <div>{t('The highlighted row is where most working sets land. Sets you have already logged keep their own scale, and nothing else reads the value — progression and estimated 1RM are unaffected.')}</div>
+      <div>Previously logged sets keep their own scale. Progression suggestions can use effort alongside completed work; estimated 1RM is calculated from weight and repetitions. Reps-in-reserve does not describe nerve symptoms or prove a timed hold was completed.</div>
     </div>
     <div style={{ height: 8 }} />
   </>)
@@ -425,7 +440,7 @@ function PushCard({ S, update, toast }) {
       title={t('Notifications')}
       footer={on && S.reminder?.on
         ? t("Only sent on days you have a routine planned and haven't logged a workout yet.") +
-          (S.reminder?.tz ? ' ' + t('Timezone: {0} (auto-detected, updates if you travel).', S.reminder.tz) : '')
+          (S.reminder?.tz ? ` Timezone: ${S.reminder.tz} (${S.reminder.timezoneMode === 'home' ? 'fixed home time' : 'updates when you travel'}).` : '')
         : null}
     >
       <Row icon="bell" iconTint="var(--red)" title={t('Push notifications')} subtitle={t('Rest-timer alerts, even if openGym is closed.')}>
@@ -433,13 +448,13 @@ function PushCard({ S, update, toast }) {
       </Row>
       {on && (
         <Row icon="calendar" iconTint="var(--orange)" title={t('Workout day reminder')}>
-          <Switch checked={!!S.reminder?.on} onChange={() => update(s => { s.reminder = { ...(s.reminder || DEF.reminder), on: !s.reminder?.on, tz: localTZ() } })} />
+          <Switch checked={!!S.reminder?.on} onChange={() => update(s => { s.reminder = { ...(s.reminder || DEF.reminder), on: !s.reminder?.on, tz: s.reminder?.timezoneMode === 'home' ? 'Australia/Sydney' : localTZ() } })} />
         </Row>
       )}
       {on && S.reminder?.on && (
         <Row icon="clock" iconTint="var(--purple)" title={t('Reminder time')}>
           <input type="time" className="timef" value={S.reminder?.time || DEF.reminder.time}
-            onChange={e => update(s => { s.reminder = { ...(s.reminder || DEF.reminder), time: e.target.value, tz: localTZ() } })} />
+            onChange={e => update(s => { s.reminder = { ...(s.reminder || DEF.reminder), time: e.target.value, tz: s.reminder?.timezoneMode === 'home' ? 'Australia/Sydney' : localTZ() } })} />
         </Row>
       )}
     </Section>

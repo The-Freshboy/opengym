@@ -57,3 +57,72 @@ careful review of a proposed exercise change or independent security testing.
 
 References: [OWASP REST Security](https://cheatsheetseries.owasp.org/cheatsheets/REST_Security_Cheat_Sheet.html),
 [OWASP CSRF Prevention](https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html).
+
+## Context v2 and proposal additions (30 August 2026)
+
+Connection creation accepts optional `categories: ["goals", "readiness", "instructions"]`.
+The default is an empty list, including existing credentials. These categories add goals/test
+results, readiness/nerve-symptom fields, and routine/exercise instructions/hang context,
+respectively. Existing base training comments remain part of disclosed read access. Categories
+are recorded on the credential and returned as `sharedCategories` with context version 2.
+Warm-up set tags and session RPE are preserved in training context. No missing baseline is invented.
+
+New proposal types, still owner-approved and revision-checked:
+
+- `day-plan`: `target: {date: "2026-09-07"}`, `after: ["existing-routine-id"]`.
+  An empty array means explicit rest; null removes the dated override and restores weekly fallback.
+- `add-custom-exercise`: `target: {routineId: "existing-routine-id"}`, with
+  `after: {exercise: {id: "custom_supported_hold", n: "Supported hold", bp: "other", eq: "hangboard", desc: "..."}, prescription: {mode: "time", sets: 2, sec: 5, note: "...", restSec: 90}}`.
+  Repetition mode accepts `reps` instead of `sec`. New custom exercises are always optional and
+  progression-off. Existing mandatory exercises are not removed or unprotected.
+
+For a date-only addition, include `target.date` on `add-custom-exercise`. That date must
+already contain the target routine (weekly fallback or dated override). Approval clones the
+routine to a deterministic new ID, adds the optional exercise to that copy, and replaces only
+the matching session on that date; other sessions and all other dates remain unchanged.
+The proposal exposes `affectedDate` and `scope: "dated-copy"`. Without `target.date`, the
+operation has `scope: "shared-routine"` and changes the routine wherever it is used. A separate
+`day-plan` operation does not make a shared routine edit date-limited. Arbitrary state
+replacement and arbitrary new routine creation remain unsupported.
+
+Each change should explain `why`. Returned changes include routine/exercise names for display;
+audit records include the connection name. Approval retries after a lost response return
+`alreadyApplied: true` without incrementing the revision again. A durable applied-operation
+marker repairs a state-committed/audit-not-saved interruption.
+
+## Compatibility and operations
+
+- Existing state files stay readable by the Coach. A pending redo journal, fsynced before the
+  state/meta pair, repairs interrupted writes when the store is read. Back up the whole data
+  directory, including pending journals. New snapshots carry an integrity checksum; legacy
+  snapshots remain readable. A corrupt file fails closed instead of appearing as empty data.
+- Updating existing state requires an integer `baseRevision`; missing/stale revision returns
+  conflict with current data. Initial creation remains compatible.
+- Browser mutation requests require JSON and exact configured Origin for session cookies.
+  Native/specialised cookie clients must be checked before deployment; bearer-only integration
+  requests retain their separate auth boundary. Do not widen Origin just to suppress an error.
+- Login limits ignore forwarded headers unless `TRUST_PROXY=true`. Only set it when ingress is
+  restricted to a reverse proxy that overwrites untrusted forwarding headers.
+- Push delivery requires public HTTPS destinations on port 443 and validates/pins DNS at each
+  connection. Private-host custom Web Push services are intentionally unsupported by this
+  policy; ntfy's explicitly configured internal service is separate and unchanged.
+- `GET /api/diagnostics` is authenticated and shows profile sync/snapshot/reviewer/notifier
+  status without credentials. `build` is null unless `APP_BUILD` is explicitly supplied; it
+  must not be interpreted as proof of a deployed revision or network boundary.
+- Dedicated review timezone is `coach.cadence.weekly.timezone`; legacy fallback remains
+  `reminder.tz`, then UTC. Weekly reviews catch up later on their scheduled day, not after a
+  whole-day outage. Persisted job history suppresses repeated scheduled attempts that day;
+  manual retry remains available. Daily caps are explicitly UTC.
+- Weekly ntfy is a reminder to review, not a claim that an AI review completed. It remains
+  Sunday 19:00 Canberra with same-day catch-up; no secrets or clinical content appear in it.
+
+Before enabling/deploying, verify cookie/passkey login, proposal review, two-device conflicts,
+push delivery and public/Tailscale route separation. Roll back application images and disable
+integrations if needed; do not delete state, journals, credentials or snapshots.
+
+**Rollback with a pending journal:** old images do not know how to replay the new
+`state-*.pending.json` records. Before switching to an old image, stop writes, let this version
+open/recover every affected profile and verify that no pending records remain. Preserve an
+independent full-directory backup. If recovery cannot complete, restore a consistent verified
+backup with its matching metadata rather than deleting a journal. Normal state/meta files
+remain backward-readable once recovery has completed.
