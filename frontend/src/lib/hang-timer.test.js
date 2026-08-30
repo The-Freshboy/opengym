@@ -1,6 +1,18 @@
 import { describe, it, expect } from 'vitest'
-import { TIMER_DEFAULTS as base, timerError, timerPhases, phaseRemaining } from './hang-timer.js'
+import { TIMER_DEFAULTS as base, timerError, timerPhases, phaseRemaining, timerClock, remainingSession } from './hang-timer.js'
 describe('hang interval timer', () => {
+  it('formats remaining time with ceiling and optional hours', () => {
+    expect(timerClock(29000)).toBe('00:29')
+    expect(timerClock(1)).toBe('00:01')
+    expect(timerClock(3599999)).toBe('01:00:00')
+    expect(timerClock(-1)).toBe('00:00')
+  })
+  it('totals the current remainder and later phases after a jump', () => {
+    const p = timerPhases(base)
+    expect(remainingSession(p, 0, 10000)).toBe(110000)
+    expect(remainingSession(p, 2, 29000)).toBe(34000)
+    expect(remainingSession(p, 3, 0)).toBe(0)
+  })
   it('uses editable short example intervals, not the screenshot dose', () => {
     expect(timerPhases(base).map(p => [p.kind, p.seconds])).toEqual([['Get ready', 10], ['Hang', 5], ['Rest', 90], ['Hang', 5]])
   })

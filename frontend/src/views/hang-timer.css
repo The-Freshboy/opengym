@@ -1,8 +1,44 @@
 .hang-clock { text-align: center; padding: 28px 16px; }
 .hang-clock-work { border: 2px solid var(--accent); }
-.hang-digits { font-size: clamp(90px, 24vw, 180px); line-height: 1.25; font-weight: 700; font-variant-numeric: tabular-nums; }
+.hang-digits { font-size: clamp(48px, 17vw, 130px); line-height: 1.25; font-weight: 700; font-variant-numeric: tabular-nums; }
 .hang-controls { display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; margin: 16px 0; }
 .hang-controls .btn { min-height: 56px; min-width: 110px; }
 .hang-settings { border: 0; padding: 16px 0; display: grid; gap: 16px; min-width: 0; }
 .hang-settings label { display: grid; gap: 6px; }
 .hang-timer-page summary { cursor: pointer; padding: 12px 0; }
+.hang-focus { --phase: #ededed; position: fixed; inset: 0; z-index: 10000; height: 100dvh; overflow: auto; background: #060606; color: #f5f5f5; display: flex; flex-direction: column; padding: env(safe-area-inset-top) max(16px, env(safe-area-inset-right)) env(safe-area-inset-bottom) max(16px, env(safe-area-inset-left)); box-sizing: border-box; font-family: system-ui, sans-serif; }
+.hang-focus.phase-work { --phase: #ff914d; }
+.hang-focus.phase-rest { --phase: #b7e329; }
+.hang-focus.phase-recover { --phase: #75caff; }
+.hang-focus.phase-warmup { --phase: #ffc76b; }
+.hang-focus.phase-cooldown { --phase: #63e5db; }
+.hang-focus-header { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 16px 0; }
+.hang-focus-header > div { text-align: right; }
+.hang-brand { color: #a6a6a6; font-size: 12px; }
+.hang-focus-header h2 { color: var(--phase); font-size: clamp(24px, 6vw, 50px); font-weight: 300; margin: 4px 0; }
+.hang-focus-digits { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; color: var(--phase); font-size: min(27vw, 30dvh, 270px); line-height: 1.2; letter-spacing: -.065em; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.hang-focus-digits.long { font-size: min(17vw, 24dvh, 180px); }
+.hang-focus-next { color: #c1c1c1; text-align: center; font-size: 16px; margin: 8px 0 24px; }
+.hang-focus-stats { display: grid; grid-template-columns: 1fr 1fr 1.8fr; gap: 10px; border-top: 1px solid #444; padding: 24px 0; width: 100%; max-width: 900px; margin: 0 auto; }
+.hang-focus-stats div { display: flex; flex-direction: column; gap: 12px; min-width: 0; text-align: center; }
+.hang-focus-stats span { color: #bcbcbc; font-size: clamp(12px, 3vw, 22px); }
+.hang-focus-stats strong { font-variant-numeric: tabular-nums; font-weight: 400; font-size: clamp(22px, 7vw, 54px); }
+.hang-focus-stats small { font-size: 14px; color: #bcbcbc; }
+.hang-focus-notice { color: #bbb; font-size: 12px; text-align: center; margin: 0 0 16px; min-height: 30px; }
+.hang-focus-toolbar { display: flex; justify-content: space-around; gap: 8px; background: #232323; padding: 14px 0; border-radius: 16px 16px 0 0; }
+.hang-round { background: transparent; color: #f5f5f5; border: 1px solid #aaa; border-radius: 50%; width: 56px; height: 56px; min-width: 56px; display: inline-flex; align-items: center; justify-content: center; flex-direction: column; gap: 2px; cursor: pointer; }
+.hang-round svg { width: 26px; height: 26px; }
+.hang-round span { font-size: 9px; line-height: 1; }
+.hang-round:disabled { opacity: .35; cursor: default; }
+.hang-round:focus-visible { outline: 3px solid var(--phase); outline-offset: 4px; }
+@media (orientation: landscape) and (max-height: 550px) {
+  .hang-focus-header { padding: 6px 0; }
+  .hang-brand, .hang-focus-notice { display: none; }
+  .hang-focus-digits { font-size: 26dvh; }
+  .hang-focus-digits.long { font-size: 23dvh; }
+  .hang-focus-next { margin: 0 0 6px; }
+  .hang-focus-stats { padding: 8px 0; }
+  .hang-focus-stats div { gap: 2px; }
+  .hang-focus-stats strong { font-size: 24px; }
+  .hang-focus-toolbar { padding: 6px 0; }
+}

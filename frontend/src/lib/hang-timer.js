@@ -25,3 +25,11 @@ export function timerPhases(config) {
   return phases
 }
 export function phaseRemaining(deadline, now) { return Math.max(0, deadline - now) }
+export function timerClock(milliseconds) {
+  const seconds = Math.max(0, Math.ceil(milliseconds / 1000))
+  const pad = n => String(n).padStart(2, '0')
+  return seconds >= 3600 ? `${pad(Math.floor(seconds / 3600))}:${pad(Math.floor(seconds / 60) % 60)}:${pad(seconds % 60)}` : `${pad(Math.floor(seconds / 60))}:${pad(seconds % 60)}`
+}
+export function remainingSession(phases, index, remaining) {
+  return Math.max(0, remaining) + phases.slice(index + 1).reduce((sum, phase) => sum + phase.seconds * 1000, 0)
+}
