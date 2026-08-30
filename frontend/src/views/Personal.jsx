@@ -49,7 +49,7 @@ function GoalCard({ goal }) {
 }
 
 export default function Personal() {
-  const nav = useNavigate(); const { S, update, config } = useStore()
+  const nav = useNavigate(); const { S, update, config, user } = useStore()
   const [custom, setCustom] = useState({ name: '', target: '', unit: 'kg' })
   const goals = S.goals || [], sum = weeklySummary(S, todayISO())
   const add = template => update(s => { s.goals ||= []; s.goals.push({ ...template, id: crypto.randomUUID() }) })
@@ -62,7 +62,7 @@ export default function Personal() {
       {goals.some(g => g.archived) && <details><summary>Archived goals</summary>{goals.filter(g => g.archived).map(g => <Button key={g.id} onClick={() => update(s => { s.goals.find(x => x.id === g.id).archived = false })}>Restore {g.name}</Button>)}</details>}
     </section>
     <section className="card"><h2>Weekly ntfy reminder</h2><p className="small dim">Sunday at 7 pm Canberra time (Australia/Sydney, including daylight saving). The lock-screen message only says your weekly summary is ready; training details stay in the app. No AI API call.</p>
-      <label className="personal-check"><input type="checkbox" checked={!!S.personal?.weeklySummary} onChange={e => update(s => { s.personal = { ...s.personal, weeklySummary: e.target.checked } })} />Enable weekly summary reminder</label><p className="small dim">{config?.personalNotifications ? 'Server notification service configured.' : 'Server ntfy configuration is required before reminders can be delivered.'}</p>
+      <label className="personal-check"><input type="checkbox" disabled={!user} checked={!!user && !!S.personal?.weeklySummary} onChange={e => update(s => { s.personal = { ...s.personal, weeklySummary: e.target.checked } })} />Enable weekly summary reminder</label><p className="small dim">{!user ? 'Sign in with your passkey to enable server reminders. Guest changes stay only in this browser and cannot schedule notifications.' : config?.personalNotifications ? 'Server notification service configured.' : 'Server ntfy configuration is required before reminders can be delivered.'}</p>
     </section>
   </div>
 }
