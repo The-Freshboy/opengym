@@ -21,7 +21,8 @@ export const DEF = {
   // AI Coach (issue: AI enablement). null until the profile opts in — a null namespace is the
   // same app it was before the feature existed, which is what Epic F asks for. Shape and
   // bounds live in lib/coach.js.
-  coach: null
+  coach: null,
+  goals: [], goalResults: [], personal: { weeklySummary: false }
 }
 const clone = o => JSON.parse(JSON.stringify(o))
 
@@ -84,6 +85,8 @@ export const useStore = create((set, get) => {
     localStorage.removeItem(REV_KEY)
     localStorage.removeItem(CONFLICT_KEY)
     localStorage.removeItem(KEY)
+    localStorage.removeItem('gym_before_full_restore')
+    localStorage.removeItem('gym_reviewed_plan_recovery')
     persist(clone(DEF), false)
   }
 

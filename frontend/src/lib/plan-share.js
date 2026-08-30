@@ -40,6 +40,8 @@ function cleanEx(e) {
   if (e.repsMin != null) o.repsMin = e.repsMin
   if (e.sg) o.sg = e.sg
   if (e.video) o.video = e.video
+  if (e.mandatory) o.mandatory = true
+  if (e.optional && !e.mandatory) o.optional = true
   return o
 }
 

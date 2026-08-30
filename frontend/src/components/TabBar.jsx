@@ -42,7 +42,7 @@ export default function TabBar({ onStart }) {
         <span>{editing ? t('Edit') : S.active ? t('Resume') : t('Start')}</span>
       </button>
       <Tab k="insights" icon="chart" to="/insights" label={t('Insights')} />
-      <Tab k="library" icon="list" to="/library" label={t('Exercises')} />
+      <Tab k="personal" icon="flag" to="/personal" label="Your training" />
     </nav>
   )
 }

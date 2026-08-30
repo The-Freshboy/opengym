@@ -15,6 +15,15 @@ const PLAN = {
 const change = over => ({ id: 'c1', type: 'sets', target: { routineId: 'r1', exId: '0001' }, before: 3, after: 4, why: 'stalled twice', ...over });
 const review = changes => validateReview({ coach_contract: 1, summary: 's', changes }, PLAN);
 
+test('mandatory exercises cannot be removed or swapped by a provider', () => {
+  const plan = structuredClone(PLAN); plan.routines[0].ex[0].mandatory = true;
+  for (const type of ['remove-exercise', 'swap-exercise', 'remove-routine']) {
+    const result = validateReview({ coach_contract: 1, summary: 's', changes: [change({ type, after: { id: '0002' } })] }, plan);
+    assert.equal(result.ok, false);
+    assert.match(result.errors.join(' '), /mandatory/);
+  }
+});
+
 /* ---------------- extraction ---------------- */
 
 test('JSON is recovered from whatever the model wrapped it in', () => {

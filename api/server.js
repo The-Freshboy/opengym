@@ -15,6 +15,7 @@ import { coachRoutes } from './coach/routes.js';
 import { startCadence } from './coach/cadence.js';
 import { createStateStore, StateConflict } from './state-store.js';
 import { createRateLimiter } from './rate-limit.js';
+import { createPersonalNotifier } from './personal-notifications.js';
 
 const PORT = +(process.env.PORT || 3000);
 const DATA = process.env.DATA_DIR || '/data';
@@ -63,6 +64,12 @@ const stateStore = createStateStore(DATA);
 const stateFile = stateStore.file;
 const readState = uid => stateStore.read(uid).state;
 const rateLimit = createRateLimiter();
+const personalNotifier = createPersonalNotifier({ dataDir: DATA, users: () => db.users, readState });
+setInterval(() => { personalNotifier.tick().catch(() => console.error('Weekly notification could not be delivered; check ntfy configuration.')); }, 60000).unref();
+// Automatic retained recovery copies also run on quiet days without a new workout.
+const backupProfiles = () => { for (const user of db.users) { try { stateStore.backup(user.id); } catch { console.error('Daily recovery copy failed'); } } };
+backupProfiles();
+setInterval(backupProfiles, 60 * 60 * 1000).unref();
 
 /* ---------- push notifications (Web Push / VAPID) ---------- */
 const vapidFile = path.join(DATA, 'vapid.json');
@@ -277,7 +284,7 @@ const routes = {
   // the app it was before the feature existed.
   'GET /api/config': async (req, res) => {
     const coach = coachConfig.publicConfig();
-    json(res, 200, { invite_only: INVITE_ONLY, ...(coach ? { coach } : {}) });
+    json(res, 200, { invite_only: INVITE_ONLY, personalNotifications: personalNotifier.configured, ...(coach ? { coach } : {}) });
   },
 
   'GET /api/me': async (req, res) => {
@@ -421,6 +428,13 @@ const routes = {
     json(res, 200, { snapshots: stateStore.list(user.id), current: stateStore.read(user.id) });
   },
 
+  'POST /api/data/snapshots/preview': async (req, res) => {
+    const user = readSession(req);
+    if (!user) return json(res, 401, { error: 'not signed in' });
+    const body = await readBody(req);
+    try { json(res, 200, stateStore.preview(user.id, body.id)); }
+    catch (e) { json(res, /not found/.test(e.message) ? 404 : 400, { error: e.message }); }
+  },
   'POST /api/data/snapshots/restore': async (req, res) => {
     const user = readSession(req);
     if (!user) return json(res, 401, { error: 'not signed in' });

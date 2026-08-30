@@ -1,3 +1,4 @@
+import { protectedPlanErrors } from './personal.js'
 export const PLAN_FIELDS = ['routines', 'week', 'dayPlan', 'customEx', 'exWeights']
 
 const clone = value => JSON.parse(JSON.stringify(value))
@@ -62,6 +63,8 @@ export function compareReviewedBackup(current, incoming) {
 export const snapshotPlan = state => Object.fromEntries(PLAN_FIELDS.map(key => [key, clone(state[key] ?? (key === 'routines' || key === 'customEx' ? [] : {}))]))
 
 export function applyReviewedPlan(target, incoming) {
+  const errors = protectedPlanErrors(target, incoming)
+  if (errors.length) throw new Error(errors.join(' '))
   for (const key of PLAN_FIELDS) target[key] = clone(incoming[key])
   target.active = null
 }

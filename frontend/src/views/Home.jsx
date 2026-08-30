@@ -101,6 +101,7 @@ export default function Home() {
 
     {syncConflict && <div className="card tappable" style={{ borderColor: 'var(--orange)' }} onClick={() => nav('/settings/sync')}><div className="row between"><div><b>Sync needs your choice</b><div className="small dim">This profile changed on another device.</div></div><Icon name="chevronRight" /></div></div>}
 
+    <div className="card"><div className="row between"><div><h2>Your training</h2><div className="small dim">Goals, test results and your weekly summary</div></div><Button onClick={() => nav('/personal')}>Open</Button></div></div>
     {pt && (pt.goal || pt.message || pt.plan) && <div className="card" style={{ borderColor: pt.plan ? 'var(--acc)' : undefined }}>
       <div className="row between"><h2 style={{ margin: 0 }}>{t('From your PT')}</h2>{pt.status && <span className="tag acc">{pt.status}</span>}</div>
       {pt.goal && <div className="small" style={{ marginTop: 10 }}><b>{t('Current goal')}:</b> {pt.goal}</div>}

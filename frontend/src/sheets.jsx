@@ -20,6 +20,8 @@ import { parseImport, mergeImport } from './lib/import-csv.js'
 import { buildPlanBundle, parsePlan, mergePlan, printPlan } from './lib/plan-share.js'
 import { estimate1RM, best1RM, is1RMRecord, REP_CAP } from './lib/onerm.js'
 import { nextPrescription, applyPrescription, policyFor, defaultIncrement, POLICIES_FOR, POLICY_NAME, POLICY_DESC } from './lib/progression.js'
+import { preparePersonalEntry, sessionExercises } from './lib/personal.js'
+import { SessionFeedback } from './components/PersonalTraining.jsx'
 import { MOBILE, shareExport } from './lib/mobile.js'
 import { prepareCompletedWorkoutEdit, recalculateCompletedWorkoutHistory, recalculateExerciseWeights, removeCompletedWorkout } from './lib/completed-workout-edit.js'
 import { canonicalYouTubeUrl } from './lib/youtube.js'
@@ -798,16 +800,16 @@ function MovePlanned({ iso, routineId, close }) {
   const [to, setTo] = useState(() => iso < todayISO() ? todayISO() : iso)
   if (!r) return null
   const move = () => {
-    if (!to || to === iso) return
+    if (!to || to === iso || to < todayISO() || !/^\d{4}-\d{2}-\d{2}$/.test(to)) return
     update(s => { movePlannedRoutine(s, iso, to, routineId) })
     close(); toast(t('{0} moved to {1}', r.name, fmtDate(to)))
   }
   const quickDate = days => { const d = new Date(); d.setDate(d.getDate() + days); setTo(isoOf(d)) }
   return <><h3>{t('Move / reschedule')}</h3><div className="muted small" style={{ marginBottom: 14 }}>{r.name} · {fmtDate(iso, true)}</div>
     <label className="small muted" htmlFor="move-workout-date">{t('New date')}</label>
-    <input id="move-workout-date" type="date" value={to} min={todayISO()} onChange={e => setTo(e.target.value)} style={{ width: '100%', margin: '7px 0 16px' }} />
+    <input id="move-workout-date" className="field" type="date" value={to} min={todayISO()} onChange={e => setTo(e.target.value)} style={{ width: '100%', minHeight: 48, margin: '7px 0 16px' }} />
     <div className="row" style={{ gap: 8, marginBottom: 14 }}><Button size="sm" variant="tinted" onClick={() => quickDate(0)}>{t('Today')}</Button><Button size="sm" variant="tinted" onClick={() => quickDate(1)}>{t('Tomorrow')}</Button><Button size="sm" variant="tinted" onClick={() => quickDate(7)}>{t('Next week')}</Button></div>
-    <Button variant="primary" icon="calendar" onClick={move} disabled={!to || to === iso}>{t('Move session')}</Button></>
+    <Button variant="primary" icon="calendar" onClick={move} disabled={!to || to === iso || to < todayISO()}>{t('Move session')}</Button></>
 }
 
 export const movePlannedSheet = (iso, routineId) =>
@@ -938,6 +940,7 @@ function WorkoutDetail({ w, close }) {
   const update = useStore(s => s.update)
   return <>
     <h3>{w.name}</h3>
+    <SessionFeedback workoutId={w.id} />
     <div className="muted small" style={{ marginBottom: 12 }}>{[fmtDate(w.d, true), ...durPart(w.end - w.start), sessionLoadLabel(w, st.unit)].filter(Boolean).join(' · ')}</div>
     {w.kind === 'activity' && <><div className="row" style={{ gap: 6, flexWrap: 'wrap', marginBottom: 12 }}><span className="tag acc">{t(w.activityType)}</span><span className="tag">{t('Intensity')} {w.intensity}/10</span>{w.location && <span className="tag">{w.location}</span>}{w.grade && <span className="tag">{w.grade}</span>}{w.style && <span className="tag">{w.style}</span>}{w.attempts > 0 && <span className="tag">{w.attempts} attempts</span>}{w.sends > 0 && <span className="tag">{w.sends} sends</span>}{w.flashes > 0 && <span className="tag">{w.flashes} flashes</span>}{w.distance && <span className="tag">{w.distance} km</span>}</div>{w.note && <div className="card small" style={{ whiteSpace: 'pre-wrap' }}>{w.note}</div>}<Button variant="primary" icon="pencil" onClick={() => { close(); activityLogSheet(w) }}>{t('Edit activity')}</Button><div style={{ height: 8 }} /><Button variant="tinted" icon="reset" onClick={() => { close(); duplicateRecordSheet(w) }}>{t('Repeat / duplicate')}</Button><div style={{ height: 8 }} /><Button variant="danger" onClick={() => confirmSheet({ title: t('Delete activity?'), message: t('This removes it from your history for good.'), confirmText: t('Delete'), danger: true, onConfirm: () => { update(s => { s.workouts = s.workouts.filter(x => x.id !== w.id) }); close() } })}>{t('Delete activity')}</Button></>}
     {w.kind !== 'activity' && <>
@@ -1065,20 +1068,21 @@ export function WorkoutRow({ w, onClick }) {
 
 /* ============================ workout lifecycle ============================ */
 export function startFlow(routineId) {
-  bwSheet({ required: true, onDone: bw => beginWorkout(routineId, bw) })
+  const r = S().routines.find(x => x.id === routineId)
+  if (r?.ex.some(e => e.optional && !e.mandatory)) {
+    ui().openSheet(close => <><h3>Choose today’s session</h3><p className="small dim">Short sessions omit only exercises you marked optional. Mandatory and unmarked exercises stay, with the same planned sets.</p><Button variant="primary" onClick={() => { close(); bwSheet({ required: true, onDone: bw => beginWorkout(routineId, bw, 'full') }) }}>Full session · {r.ex.length} exercises</Button><div style={{ height: 8 }} /><Button onClick={() => { close(); bwSheet({ required: true, onDone: bw => beginWorkout(routineId, bw, 'short') }) }}>Short session · {sessionExercises(r, 'short').length} exercises</Button></>)
+  } else bwSheet({ required: true, onDone: bw => beginWorkout(routineId, bw) })
 }
-export function beginWorkout(routineId, bw) {
+export function beginWorkout(routineId, bw, variant = 'full') {
   const st = S()
   const r = routineId ? st.routines.find(x => x.id === routineId) : null
   // The prescription is applied as the session is built, so you walk up to the bar with the
   // right weight already on the screen instead of being told about it afterwards. `plan` is
   // kept on the entry purely so the workout can explain the number it chose.
-  const entries = (r ? r.ex : []).map(cfg => {
-    const plan = nextPrescription(st, cfg, r)
-    return { id: cfg.id, sg: cfg.sg, target: { ...cfg }, plan, sets: applyPrescription(buildSets(st, cfg), plan) }
-  })
+  const entries = sessionExercises(r, variant).map(cfg => preparePersonalEntry(st, cfg, r, todayISO()))
+  cleanupSg(entries)
   update(s => {
-    s.active = { id: uid(), d: todayISO(), start: Date.now(), routineId, name: r ? r.name : t('Freestyle'), bw: bw || null, cur: 0, entries }
+    s.active = { id: uid(), d: todayISO(), start: Date.now(), routineId, name: r ? r.name : t('Freestyle'), bw: bw || null, cur: 0, entries, variant, unit: st.unit }
   })
   useUI.getState().stopRest()
   nav('/workout')
@@ -1194,7 +1198,7 @@ function FinishSummary({ w, prs, e1prs = [], close }) {
     </div>}
     <h4 className="sec" style={{ textAlign: 'left' }}>{t('What you just trained')}</h4>
     <BodyMap load={loadOfWorkouts([w])} body={st.body} />
-    {coachOn && <SessionRating w={w} />}
+    <SessionFeedback workoutId={w.id} />
     <div style={{ height: 14 }} />
     <Button variant="primary" onClick={() => { close(); nav('/home') }}>{t('Nice!')}</Button>
   </div>
@@ -1239,7 +1243,8 @@ function doFinishWorkout() {
     // `target` (what the session prescribed) is kept alongside the sets: without it a
     // finished workout cannot say whether it hit its reps, and a timed session reads back
     // as "0 reps". It is what the progression engine works from.
-    entries: A.entries.map(e => ({ id: e.id, sets: e.sets, topW: e.topW || null, target: e.target || null, ...(e.note?.trim() ? { note: e.note.trim().slice(0, 500) } : {}) })).filter(e => e.sets.some(s => s.done)),
+    entries: A.entries.map(e => ({ id: e.id, sets: e.sets, topW: e.topW || null, target: e.target || null, ...(e.basePrescription ? { basePrescription: e.basePrescription } : {}), ...(e.proposal ? { progressionDecision: { status: e.proposal.status, evidenceDates: e.proposal.evidenceDates, decidedAt: e.proposal.decidedAt } } : e.progressionDecision ? { progressionDecision: e.progressionDecision } : {}), ...(e.note?.trim() ? { note: e.note.trim().slice(0, 500) } : {}) })).filter(e => e.sets.some(s => s.done)),
+    variant: A.variant || preserved.variant || 'full', unit: editing ? preserved.unit : (A.unit || st.unit),
     ...(A.note?.trim() ? { note: A.note.trim().slice(0, 1000) } : {}),
     prs,
     ...(A.incomplete ? { incomplete: true } : {})

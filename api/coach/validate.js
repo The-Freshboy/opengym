@@ -188,6 +188,9 @@ export function validateReview(data, plan) {
     if (!isStr(c.why)) { errors.push(`${where}.why is required — every change must cite the evidence behind it`); return; }
     const target = c.target || {};
     const routine = target.routineId ? routines.get(target.routineId) : null;
+    if ((c.type === 'remove-routine' && routine?.ex?.some(e => e.mandatory)) || (['remove-exercise', 'swap-exercise'].includes(c.type) && routine?.ex?.some(e => e.id === target.exId && e.mandatory))) {
+      errors.push(`${where}: mandatory base exercises cannot be removed or swapped`); return;
+    }
 
     // Targets: everything but add-routine and week must name a routine that exists; anything
     // touching an exercise must name one that is actually in it.

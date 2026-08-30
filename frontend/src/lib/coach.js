@@ -15,6 +15,7 @@ import { uid } from './format.js'
 import { mergePlan } from './plan-share.js'
 import { POLICIES } from './progression.js'
 import { t } from './i18n.js'
+import { protectedPlanErrors } from './personal.js'
 
 // Bumping this re-prompts everyone: it means what we share, or who we share it with, changed.
 export const CONSENT_VERSION = 1
@@ -64,7 +65,7 @@ export function canonicalPlan(S) {
           min: mode === 'cardio' ? (e.min || 0) : 0,
           speed: mode === 'cardio' ? (e.speed || 0) : 0,
           weight: mode === 'cardio' ? 0 : (e.weight || 0),
-          prog: e.prog || '', inc: e.inc || 0, repsMin: e.repsMin || 0, sg: e.sg || ''
+          prog: e.prog || '', inc: e.inc || 0, repsMin: e.repsMin || 0, sg: e.sg || '', mandatory: !!e.mandatory, optional: !!e.optional && !e.mandatory
         }
       })
     })),
@@ -76,7 +77,7 @@ export function canonicalPlan(S) {
 export function hashPlan(plan) {
   const canon = JSON.stringify({
     routines: (plan?.routines || []).map(r => [r.id, r.name, r.prog, (r.ex || []).map(e =>
-      [e.id, e.mode, e.sets, e.reps, e.sec, e.min, e.speed, e.weight, e.prog, e.inc, e.repsMin, e.sg].join(':')
+      [e.id, e.mode, e.sets, e.reps, e.sec, e.min, e.speed, e.weight, e.prog, e.inc, e.repsMin, e.sg, !!e.mandatory, !!e.optional].join(':')
     )]),
     week: Object.keys(plan?.week || {}).sort().map(k => k + '=' + plan.week[k])
   })
@@ -351,12 +352,20 @@ export function applyChangeSet(s, proposal, acceptedIds) {
   const changes = (proposal.changes || []).filter(c => accepted.has(c.id) && c.status !== 'stale')
   if (!changes.length) return { applied: 0 }
 
+  const beforeProtection = JSON.parse(JSON.stringify({ routines: s.routines }))
+  for (const c of changes) {
+    const r = findRoutine(s, c.target?.routineId)
+    if ((c.type === 'remove-routine' && r?.ex?.some(e => e.mandatory)) || (['remove-exercise', 'swap-exercise'].includes(c.type) && r?.ex?.some(e => e.id === c.target.exId && e.mandatory))) throw new Error('A mandatory base exercise cannot be removed or swapped by the Coach.')
+  }
+
   pushSnapshot(s, proposal.id, t('Before the Coach’s changes'))
   const applied = []
   for (const c of changes) {
     CHANGE_APPLY[c.type](s, c)
     applied.push({ id: c.id, type: c.type, target: c.target, before: c.before, after: c.after, why: c.why, status: 'accepted' })
   }
+  const protectionErrors = protectedPlanErrors(beforeProtection, s)
+  if (protectionErrors.length) throw new Error(protectionErrors.join(' '))
   const rejected = (proposal.changes || [])
     .filter(c => !accepted.has(c.id))
     .map(c => ({ id: c.id, type: c.type, why: c.why, status: 'rejected' }))

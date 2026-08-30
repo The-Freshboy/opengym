@@ -16,6 +16,9 @@ import { forgetCoach } from '../lib/coach-api.js'
 import Icon from '../components/Icon.jsx'
 import { Section, Row, SelectRow, Switch, Segmented, Button, TextField } from '../components/ui.jsx'
 import { applyReviewedPlan, compareReviewedBackup, restoreReviewedPlan, snapshotPlan, validateReviewedBackup } from '../lib/backup-review.js'
+import { validateFullBackup } from '../lib/recovery.js'
+import BackupPreview from '../components/BackupPreview.jsx'
+import { protectedPlanErrors } from '../lib/personal.js'
 
 const PLAN_RECOVERY_KEY = 'gym_reviewed_plan_recovery'
 
@@ -69,10 +72,14 @@ export default function Settings() {
         const data = JSON.parse(rd.result)
         const valid = validateReviewedBackup(data)
         if (!valid.ok) throw new Error(valid.errors.join(' '))
+        const protection = protectedPlanErrors(useStore.getState().S, data)
+        if (protection.length) throw new Error(protection.join(' '))
+        if (useStore.getState().S.active) throw new Error('Finish or save your active workout before importing a plan.')
         const preview = compareReviewedBackup(S, data)
         if (!preview.changed) return toast('No plan changes found in this backup')
         useUI.getState().openSheet(close => <ReviewedBackupSheet current={S} incoming={data} preview={preview} close={close}
           apply={(current, incoming, done) => {
+            if (JSON.stringify(useStore.getState().S) !== JSON.stringify(current)) return toast('Your data changed during preview. Open the import again.')
             localStorage.setItem(PLAN_RECOVERY_KEY, JSON.stringify(snapshotPlan(current)))
             update(next => applyReviewedPlan(next, incoming))
             setHasPlanRecovery(true)
@@ -85,12 +92,29 @@ export default function Settings() {
   const doImport = ev => {
     const f = ev.target.files[0]; if (!f) return
     ev.target.value = ''
+    if (f.size > 5 * 1024 * 1024) return toast('Import failed: file is larger than 5 MB')
     const rd = new FileReader()
     rd.onload = () => {
       try {
-        const data = JSON.parse(rd.result)
-        if (!data.workouts || !data.routines) throw new Error('not an OpenGym backup')
-        confirmSheet({ title: t('Import backup?'), message: t('This replaces all current data with the backup file.'), confirmText: t('Import'), danger: true, onConfirm: () => { replaceState(Object.assign(JSON.parse(JSON.stringify(DEF)), data), true); toast(t('Backup imported')) } })
+        const data = validateFullBackup(JSON.parse(rd.result))
+        const current = useStore.getState().S
+        if (current.active) throw new Error('Finish or save your active workout before restoring.')
+        useUI.getState().openSheet(close => <BackupPreview current={current} incoming={data} onCancel={close} onRestore={async () => {
+          try {
+            if (JSON.stringify(useStore.getState().S) !== JSON.stringify(current)) throw new Error('Your data changed during preview. Open the import again.')
+            // The normal export is an independent recovery copy, not a browser-only undo.
+            const filename = 'opengym-before-restore-' + Date.now() + '.json'
+            if (MOBILE) await shareExport(JSON.stringify(current), filename)
+            else {
+              const blob = new Blob([JSON.stringify(current)], { type: 'application/json' })
+              const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = filename; a.click(); setTimeout(() => URL.revokeObjectURL(url), 60000)
+            }
+            if (JSON.stringify(useStore.getState().S) !== JSON.stringify(current)) throw new Error('Your data changed while saving the recovery copy. Open the import again.')
+            localStorage.setItem('gym_before_full_restore', JSON.stringify({ at: Date.now(), state: current }))
+            replaceState({ ...JSON.parse(JSON.stringify(DEF)), ...data, active: null }, true)
+            close(); toast('Backup imported. A pre-restore copy was saved on this device.')
+          } catch (e) { toast(e.message) }
+        }} />)
       } catch (e) { toast(t('Import failed: {0}', e.message)) }
     }
     rd.readAsText(f)
@@ -255,7 +279,23 @@ export default function Settings() {
       <Row icon="sparkles" iconTint="var(--acc)" title="Review plan update (JSON)" subtitle="Compare routine and schedule changes before applying" accessory="chevron" onClick={() => reviewRef.current.click()} />
       <Row icon="upload" iconTint="var(--blue)" title={t('Import backup')} subtitle="Replace all OpenGym data for disaster recovery" accessory="chevron" onClick={() => fileRef.current.click()} />
       {hasPlanRecovery && <Row icon="reset" iconTint="var(--orange)" title="Restore plan before last reviewed import" subtitle="Keeps workouts logged since the import" accessory="chevron" onClick={restorePlan} />}
+      <Row icon="list" title="Exercise library" subtitle="Instructions, favourites, custom exercises and equipment alternatives" accessory="chevron" onClick={() => nav('/library')} />
       <Row icon="download" iconTint="var(--blue)" title={t('Export backup (JSON)')} accessory="chevron" onClick={doExport} />
+      <Row icon="history" title="Recover pre-import copy" subtitle="Preview the copy saved on this device before the last full import" accessory="chevron" onClick={() => {
+        try {
+          const saved = JSON.parse(localStorage.getItem('gym_before_full_restore'))
+          if (!saved?.state) return toast('No pre-import copy on this device')
+          const incoming = validateFullBackup(saved.state), current = useStore.getState().S
+          if (current.active) return toast('Finish or save the active workout first')
+          useUI.getState().openSheet(close => <BackupPreview current={current} incoming={incoming} onCancel={close} onRestore={() => {
+            try {
+            if (JSON.stringify(useStore.getState().S) !== JSON.stringify(current)) return toast('Your data changed. Open the preview again.')
+            localStorage.setItem('gym_before_full_restore', JSON.stringify({ at: Date.now(), state: current }))
+            replaceState({ ...JSON.parse(JSON.stringify(DEF)), ...incoming, active: null }, true); close(); toast('Pre-import copy restored')
+            } catch (e) { toast(e.message || 'Recovery failed; your data is unchanged') }
+          }} />)
+        } catch (e) { toast(e.message || 'Recovery copy unavailable') }
+      }} />
       {/* Also drops anything the Coach is holding server-side: a wipe that leaves a pending
           proposal on the server behind would be a wipe in name only. */}
       <Row icon="trash" iconTint="var(--red)" title={t('Reset everything')} danger onClick={() => confirmSheet({ title: t('Reset everything?'), message: t('Deletes your plan, workouts and body weight on this device. This cannot be undone.'), confirmText: t('Delete everything'), danger: true, onConfirm: () => { if (user) forgetCoach().catch(() => {}); replaceState(JSON.parse(JSON.stringify(DEF)), true); nav('/home'); toast(t('All data reset')) } })} />

@@ -87,6 +87,8 @@ function cleanEx(e) {
   if (e.inc > 0) o.inc = e.inc;
   if (e.repsMin != null) o.repsMin = e.repsMin;
   if (e.sg) o.sg = e.sg;
+  if (e.mandatory) o.mandatory = true;
+  if (e.optional && !e.mandatory) o.optional = true;
   return o;
 }
 /**
@@ -113,7 +115,7 @@ export function canonicalPlan(S) {
           min: mode === 'cardio' ? (e.min || 0) : 0,
           speed: mode === 'cardio' ? (e.speed || 0) : 0,
           weight: mode === 'cardio' ? 0 : (e.weight || 0),
-          prog: e.prog || '', inc: e.inc || 0, repsMin: e.repsMin || 0, sg: e.sg || ''
+          prog: e.prog || '', inc: e.inc || 0, repsMin: e.repsMin || 0, sg: e.sg || '', mandatory: !!e.mandatory, optional: !!e.optional && !e.mandatory
         };
       })
     })),

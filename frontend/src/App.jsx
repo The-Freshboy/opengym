@@ -14,8 +14,11 @@ import Modals from './components/Modals.jsx'
 import Toast from './components/Toast.jsx'
 import RestTimer from './components/RestTimer.jsx'
 import Login from './views/Login.jsx'
+import './personal.css'
 
 const Home = lazy(() => import('./views/Home.jsx'))
+const Personal = lazy(() => import('./views/Personal.jsx'))
+const PhysioReport = lazy(() => import('./views/PhysioReport.jsx'))
 const Plan = lazy(() => import('./views/Plan.jsx'))
 const RoutineEdit = lazy(() => import('./views/RoutineEdit.jsx'))
 const Workout = lazy(() => import('./views/Workout.jsx'))
@@ -74,6 +77,8 @@ function Shell() {
           {!authed ? <Login /> : <Suspense fallback={<div className="empty">{t('Loading…')}</div>}>
             <Routes>
               <Route path="/home" element={<Home />} />
+              <Route path="/personal" element={<Personal />} />
+              <Route path="/personal/export" element={<PhysioReport />} />
               <Route path="/plan" element={<Plan />} />
               <Route path="/plan/r/:id" element={<RoutineEdit />} />
               <Route path="/workout" element={<Workout />} />

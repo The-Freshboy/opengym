@@ -64,10 +64,10 @@ export default function RoutineEdit() {
       return <div key={i}>
         {unitFirst.has(i) && <div className="ss-label"><Icon name="link" />{t('Superset')}</div>}
         <div className={'item' + (inSS.has(i) ? ' in-ss' : '')} onClick={() => {
-          exConfigSheet(ex, e, cfg => edit(x => { x[i] = { id: x[i].id, sg: x[i].sg, ...cfg } }), () => edit(x => { x.splice(i, 1); cleanupSg(x) }), r)
+          exConfigSheet(ex, e, cfg => edit(x => { x[i] = { id: x[i].id, sg: x[i].sg, mandatory: x[i].mandatory, optional: x[i].optional, ...cfg } }), e.mandatory ? null : () => edit(x => { x.splice(i, 1); cleanupSg(x) }), r)
         }}>
           <Thumb ex={ex} />
-          <div className="grow"><div className="tt capitalize">{ex.n}</div><div className="ss">{exLine(e, S.unit)}</div></div>
+          <div className="grow"><div className="tt capitalize">{ex.n}</div><div className="ss">{exLine(e, S.unit)}</div>{e.mandatory && <span className="tag acc">Mandatory</span>}{e.optional && !e.mandatory && <span className="tag">Optional in short sessions</span>}</div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 2, flex: 'none', alignItems: 'center' }}>
             {i > 0 && <button className={'iconbtn' + (linkedPrev ? ' on-ss' : '')} title={t('Superset with exercise above')} style={{ width: 32, height: 28, borderRadius: 8, fontSize: 15 }} onClick={ev => { ev.stopPropagation(); toggleLink(i) }}><Icon name="link" /></button>}
             <div style={{ display: 'flex', gap: 2 }}>
@@ -75,6 +75,10 @@ export default function RoutineEdit() {
               <button className="iconbtn" aria-label="Move down" style={{ width: 28, height: 24, borderRadius: 7, fontSize: 12 }} onClick={ev => { ev.stopPropagation(); move(i, 1) }}><Icon name="chevronDown" /></button>
             </div>
           </div>
+        </div>
+        <div className="row" style={{ padding: '8px 12px', gap: 12, flexWrap: 'wrap' }}>
+          <label className="small"><input type="checkbox" checked={!!e.mandatory} onChange={ev => { const checked = ev.target.checked; if (!checked && !window.confirm('Remove mandatory protection? This permits future removal or substitution.')) return; edit(x => { x[i].mandatory = checked; if (checked) x[i].optional = false }) }} /> Mandatory base exercise</label>
+          <label className="small"><input type="checkbox" disabled={!!e.mandatory} checked={!!e.optional && !e.mandatory} onChange={ev => edit(x => { x[i].optional = ev.target.checked })} /> Optional in short sessions</label>
         </div>
       </div>
     })}</div> : <div className="empty"><div className="ico"><Icon name="dumbbell" /></div>{t('No exercises yet — add your first one.')}</div>}
@@ -96,7 +100,8 @@ export default function RoutineEdit() {
     <div className="small dim row" style={{ margin: '10px 2px', gap: 5 }}><Icon name="link" style={{ fontSize: 13 }} />{t('Tap the link button on an exercise to superset it with the one above — you’ll do them back-to-back.')}</div>
     <Button variant="primary" onClick={() => exercisePicker(ex => exConfigSheet(ex, null, cfg => edit(x => { x.push({ id: ex.id, ...cfg }) }), null, r))} icon="plus">{t('Add exercise')}</Button>
     <div style={{ height: 10 }} />
-    <Button variant="danger" onClick={() => confirmSheet({
+    {r.ex.some(e => e.mandatory) && <p className="small dim">Routine deletion is blocked while it contains mandatory exercises. Unprotect them explicitly only after reviewing the base program.</p>}
+    <Button disabled={r.ex.some(e => e.mandatory)} variant="danger" onClick={() => confirmSheet({
       title: t('Delete routine?'), message: t('“{0}” and its exercises will be removed.', r.name), confirmText: t('Delete'), danger: true,
       onConfirm: () => {
         update(s => {

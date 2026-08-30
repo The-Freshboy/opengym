@@ -15,6 +15,8 @@ import { Button, Check, NumberField, TextArea } from '../components/ui.jsx'
 import { nextPrescription, applyPrescription } from '../lib/progression.js'
 import { glyphOf } from '../lib/glyphs.js'
 import YouTubeDemo from '../components/YouTubeDemo.jsx'
+import { RecentExerciseHistory, ProgressionApproval } from '../components/PersonalTraining.jsx'
+import { preparePersonalEntry } from '../lib/personal.js'
 
 /* ---------- start chooser (no active workout) ---------- */
 function StartChooser() {
@@ -115,7 +117,9 @@ function ExerciseBlock({ entryIdx, compact, editing, onToggle, onField, onAddSet
       {ex.eq && <span className="tag">{t(ex.eq)}</span>}
       {best > 0 && <span className="tag nocap">{t('Best:')} {fmtNum(best)} {S.unit}</span>}
     </div>
-    {last && <div className="small dim" style={{ marginBottom: 4 }}>{t('Last time')} ({fmtDate(last.d)}): {last.sets.map(s => setLabel(entry.id, s, last.target)).join(', ')}</div>}
+    {entry.target?.mandatory && <span className="tag acc">Mandatory base exercise</span>}
+    <RecentExerciseHistory id={entry.id} excludeId={S.active.editingWorkoutId} />
+    {!editing && <ProgressionApproval entryIdx={entryIdx} />}
     {plan && plan.why && plan.kind !== 'off' && <div className={'progline' + (plan.kind === 'deload' ? ' warn' : '')}>
       <Icon name={plan.kind === 'up' ? 'arrowUp' : plan.kind === 'deload' ? 'arrowDown' : 'lightbulb'} />
       <span>{t(...plan.why)}</span>
@@ -177,11 +181,13 @@ function ActiveWorkout() {
   const removeSet = idx => mutEntry(idx, e => { if (e.sets.length > 1) e.sets.pop() })
   const removeExercise = idx => update(s => {
     if (!s.active?.entries?.[idx]) return
+    if (s.active.entries[idx].target?.mandatory && !editing) return
     s.active.entries.splice(idx, 1)
     cleanupSg(s.active.entries)
     s.active.cur = Math.min(s.active.cur, Math.max(0, s.active.entries.length - 1))
   }, true)
   const replaceExercise = idx => {
+    if (A.entries[idx]?.target?.mandatory && !editing) return useUI.getState().toast('This is a mandatory exercise. You can finish early if needed; review the plan before substituting it.')
     const oldId = A.entries[idx]?.id
     exercisePicker(ex => useUI.getState().openSheet(close => <><h3>{t('Replace exercise')}</h3><div className="muted small" style={{ marginBottom: 14 }}>{t('Use {0} instead?', ex.n)}</div>
       <Button variant="primary" onClick={() => { update(s => { const cfg = defaultConfig(ex.id); s.active.entries[idx] = { id: ex.id, target: cfg, sets: buildSets(s, { id: ex.id, ...cfg }) } }); close() }}>{t('Today only')}</Button><div style={{ height: 8 }} />
@@ -280,7 +286,7 @@ function ActiveWorkout() {
         <ExerciseBlock entryIdx={cur} editing={editing} onToggle={i => toggle(cur, i)} onField={(i, f, v) => setField(cur, i, f, v)} onAddSet={() => addSet(cur)} onRemoveSet={() => removeSet(cur)} onStartTimed={i => startTimed(cur, i)} />
       )}
       <div style={{ height: 10 }} /><TextArea rows={2} maxLength={500} value={A.entries[cur]?.note || ''} onChange={e => update(s => { const en = s.active.entries[cur]; if (en) en.note = e.target.value })} placeholder={t('Exercise note (optional)')} />
-      <div className="row" style={{ gap: 8, marginTop: 8 }}><Button size="sm" icon="shuffle" onClick={() => replaceExercise(cur)}>{t('Replace exercise')}</Button>{lastEntryFor(S, A.entries[cur]?.id) && <Button size="sm" icon="reset" onClick={() => update(s => { const last = lastEntryFor(s, s.active.entries[cur].id); if (last) s.active.entries[cur].sets = last.sets.map(x => ({ ...x, done: editing })) })}>{t("Use last time's sets")}</Button>}</div>
+      <div className="row" style={{ gap: 8, marginTop: 8 }}><Button size="sm" icon="shuffle" disabled={!editing && A.entries[cur]?.target?.mandatory} onClick={() => replaceExercise(cur)}>{t('Replace exercise')}</Button>{lastEntryFor(S, A.entries[cur]?.id) && <Button size="sm" icon="reset" onClick={() => update(s => { const last = lastEntryFor(s, s.active.entries[cur].id); if (last) s.active.entries[cur].sets = last.sets.map(x => ({ ...x, done: editing })) })}>{t("Use last time's sets")}</Button>}</div>
     </> : <div className="empty"><div className="ico"><Icon name="shuffle" /></div>{t('Freestyle workout — add your first exercise.')}</div>}
 
     <div style={{ height: 12 }} />
@@ -291,14 +297,13 @@ function ActiveWorkout() {
     <div style={{ height: 10 }} />
     <Button onClick={() => exercisePicker(ex => exConfigSheet(ex, null, cfg => update(s => {
       const full = { ...cfg, id: ex.id }
-      const plan = editing ? null : nextPrescription(s, full, s.routines.find(r => r.id === s.active.routineId))
-      const sets = applyPrescription(buildSets(s, full), plan)
-      if (editing) sets.forEach(set => { set.done = true })
-      s.active.entries.push({ id: ex.id, target: { ...cfg }, plan, sets })
+      const prepared = preparePersonalEntry(s, full, s.routines.find(r => r.id === s.active.routineId), todayISO())
+      if (editing) { prepared.sets.forEach(set => { set.done = true }); delete prepared.proposal }
+      s.active.entries.push(prepared)
       s.active.cur = s.active.entries.length - 1
     }), null, S.routines.find(r => r.id === A.routineId), editing ? t('Add to workout') : undefined))} icon="plus">{t('Add exercise')}</Button>
     {A.entries.length > 0 && <><div style={{ height: 6 }} />
-      <div style={{ display: 'flex', justifyContent: 'center' }}><Button size="sm" icon="minus" style={{ color: 'var(--red)' }} onClick={() => {
+      <div style={{ display: 'flex', justifyContent: 'center' }}><Button disabled={!editing && A.entries[cur]?.target?.mandatory} size="sm" icon="minus" style={{ color: 'var(--red)' }} onClick={() => {
         const e = A.entries[cur]
         confirmSheet({ title: t('Remove {0}?', exOr(e.id).n), message: t('The sets logged for this exercise will be removed.'), confirmText: t('Remove'), danger: true, onConfirm: () => removeExercise(cur) })
       }}>{t('Remove exercise')}</Button></div></>}

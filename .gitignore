@@ -11,6 +11,10 @@ data/
 # Build output / deps
 frontend/dist/
 node_modules/
+dependency-store/
+frontend/pnpm-lock.yaml
+frontend/tmp/
+api/pnpm-lock.yaml
 *.log
 .DS_Store
 

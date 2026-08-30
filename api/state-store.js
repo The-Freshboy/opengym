@@ -66,11 +66,17 @@ export function createStateStore(dataDir, { recentLimit = 10, dailyLimit = 30, n
     return fs.readdirSync(dir).filter(x => x.endsWith('.json')).map(x => readJson(path.join(dir, x)))
       .filter(Boolean).map(({ state, ...meta }) => meta).sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)))
   }
-  const restore = (uid, id, expectedRevision) => {
+  const preview = (uid, id) => {
     if (!/^((recent|daily)-[a-zA-Z0-9_-]+)$/.test(String(id))) throw new Error('invalid snapshot')
     const saved = readJson(path.join(snapshotDir(uid), id + '.json'))
     if (!saved?.state) throw new Error('snapshot not found')
+    return saved
+  }
+  const restore = (uid, id, expectedRevision) => {
+    if (!Number.isInteger(expectedRevision)) throw new Error('current revision required')
+    const saved = preview(uid, id)
     return write(uid, saved.state, expectedRevision)
   }
-  return { file, read, write, list, restore }
+  const backup = uid => ensureDaily(uid, read(uid))
+  return { file, read, write, list, restore, preview, backup }
 }

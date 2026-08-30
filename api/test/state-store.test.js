@@ -26,3 +26,23 @@ test('snapshots can restore a previous state as a new revision', () => {
   assert.equal(restored.revision, 3)
   assert.deepEqual(restored.state, { value: 1 })
 })
+
+test('snapshot preview is read-only, confined to the owner, and restore requires a revision', () => {
+  const store = createStateStore(fs.mkdtempSync(path.join(os.tmpdir(), 'opengym-state-')))
+  store.write('one', { workouts: [] }, 0); store.backup('one')
+  const snap = store.list('one')[0]
+  assert.deepEqual(store.preview('one', snap.id).state, { workouts: [] })
+  assert.equal(store.read('one').revision, 1)
+  assert.throws(() => store.preview('two', snap.id), /not found/)
+  assert.throws(() => store.preview('one', '../secret'), /invalid/)
+  assert.throws(() => store.restore('one', snap.id), /revision required/)
+})
+
+test('daily backups are bounded and do not change state revision', () => {
+  let now = new Date('2026-01-01T00:00:00Z')
+  const store = createStateStore(fs.mkdtempSync(path.join(os.tmpdir(), 'opengym-state-')), { dailyLimit: 3, now: () => now })
+  store.write('one', { workouts: [] }, 0)
+  for (let n = 1; n <= 10; n++) { now = new Date(`2026-01-${String(n).padStart(2, '0')}T00:00:00Z`); store.backup('one'); store.backup('one') }
+  assert.equal(store.list('one').length, 3)
+  assert.equal(store.read('one').revision, 1)
+})
