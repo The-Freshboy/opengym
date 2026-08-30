@@ -39,6 +39,8 @@ const hasData = st => !!((st.workouts || []).length || (st.routines || []).lengt
 export const useStore = create((set, get) => {
   let pushTm = null
   let saveTm = null
+  let pushFlight = null
+  let integrationApplying = false
 
   // Mobile build: mirror the state into a file in the app's data directory (survives WebView
   // storage eviction) and keep the native reminder schedule in step with the weekly plan.
@@ -131,15 +133,24 @@ export const useStore = create((set, get) => {
     async pushState() {
       if (!get().user) return
       clearTimeout(pushTm)
+      pushTm = null
+      if (integrationApplying) { localStorage.setItem('gym_dirty', '1'); return }
+      if (pushFlight) return pushFlight
+      const pushedUser = get().user.id
+      const pushedState = JSON.stringify(get().S)
+      pushFlight = (async () => {
       try {
         const raw = localStorage.getItem(REV_KEY)
         const baseRevision = raw == null ? null : Number(raw)
-        const result = await api('/api/data', { method: 'PUT', body: JSON.stringify({ state: get().S, baseRevision }) })
+        const result = await api('/api/data', { method: 'PUT', body: JSON.stringify({ state: JSON.parse(pushedState), baseRevision }) })
+        if (get().user?.id !== pushedUser) return
         localStorage.setItem(REV_KEY, String(result.revision))
-        localStorage.removeItem('gym_dirty')
+        if (JSON.stringify(get().S) === pushedState) localStorage.removeItem('gym_dirty')
+        else { localStorage.setItem('gym_dirty', '1'); pushTm = setTimeout(() => get().pushState(), 1500) }
         localStorage.removeItem(CONFLICT_KEY)
         set({ syncConflict: null })
       } catch (e) {
+        if (get().user?.id !== pushedUser) return
         localStorage.setItem('gym_dirty', '1')
         if (e.status === 409 && e.data?.current) {
           const conflict = { detectedAt: new Date().toISOString(), local: clone(get().S), server: e.data.current }
@@ -147,6 +158,36 @@ export const useStore = create((set, get) => {
           set({ syncConflict: conflict })
         }
       }
+      })()
+      try { await pushFlight } finally { pushFlight = null }
+    },
+
+    // Server approval is a revision-checked mutation. Pause debounced pushes until its
+    // result is installed; if local edits occur meanwhile, retain both copies for review.
+    async approveIntegrationProposal({ id, revision, localState }) {
+      if (!get().user || integrationApplying) throw new Error('Sign in and wait for the current request to finish.')
+      clearTimeout(pushTm); pushTm = null
+      if (pushFlight) await pushFlight
+      if (get().syncConflict || localStorage.getItem('gym_dirty') === '1' || get().S.active || JSON.stringify(get().S) !== localState) {
+        throw new Error('Your data changed or is not synced. Open the proposal review again.')
+      }
+      integrationApplying = true
+      const userId = get().user.id
+      try {
+        const result = await api('/api/integrations/proposals/approve', { method: 'POST', body: JSON.stringify({ id, revision }) })
+        if (get().user?.id !== userId) throw new Error('The profile changed. Sign in to the original profile to see its updated programme.')
+        if (JSON.stringify(get().S) !== localState) {
+          const conflict = { detectedAt: new Date().toISOString(), local: clone(get().S), server: result }
+          localStorage.setItem(CONFLICT_KEY, JSON.stringify(conflict)); localStorage.setItem('gym_dirty', '1')
+          set({ syncConflict: conflict })
+          throw new Error('The proposal was approved, but this device changed meanwhile. Resolve both copies in Sync & recovery.')
+        }
+        localStorage.setItem(REV_KEY, String(result.revision))
+        localStorage.removeItem('gym_dirty')
+        persist(Object.assign(clone(DEF), result.state), false)
+        set({ undoState: null })
+        return result
+      } finally { integrationApplying = false }
     },
     async pullState() {
       try {

@@ -16,6 +16,7 @@ import { startCadence } from './coach/cadence.js';
 import { createStateStore, StateConflict } from './state-store.js';
 import { createRateLimiter } from './rate-limit.js';
 import { createPersonalNotifier } from './personal-notifications.js';
+import { integrationRoutes } from './integrations.js';
 
 const PORT = +(process.env.PORT || 3000);
 const DATA = process.env.DATA_DIR || '/data';
@@ -32,6 +33,7 @@ const INVITE_ONLY = /^(1|true|yes|on)$/i.test(process.env.INVITE_ONLY || '');
 // baked into each cookie when it's issued, so lowering this never cuts an existing session short.
 const SESSION_DAYS = Math.max(1, +(process.env.SESSION_DAYS || 90) || 90);
 const MAX_BODY = 5 * 1024 * 1024;
+const INTEGRATIONS_ENABLED = /^(1|true|yes|on)$/i.test(process.env.INTEGRATIONS_ENABLED || '');
 // Secure cookies require HTTPS; over plain http://localhost the flag would drop the cookie
 const SECURE = /^https:/i.test(ORIGIN) ? ' Secure;' : '';
 
@@ -284,7 +286,7 @@ const routes = {
   // the app it was before the feature existed.
   'GET /api/config': async (req, res) => {
     const coach = coachConfig.publicConfig();
-    json(res, 200, { invite_only: INVITE_ONLY, personalNotifications: personalNotifier.configured, ...(coach ? { coach } : {}) });
+    json(res, 200, { invite_only: INVITE_ONLY, personalNotifications: personalNotifier.configured, integrations: INTEGRATIONS_ENABLED, ...(coach ? { coach } : {}) });
   },
 
   'GET /api/me': async (req, res) => {
@@ -647,7 +649,8 @@ const routes = {
   // Routes live in coach/routes.js and are handed the helpers above rather than importing
   // them: they are closures over db and SECRET, and passing them in keeps that module free of
   // a cycle. Every one of them is inert while the feature is unconfigured.
-  ...coachRoutes({ json, readBody, readSession, requireAdmin })
+  ...coachRoutes({ json, readBody, readSession, requireAdmin }),
+  ...integrationRoutes({ json, readBody, readSession, users: () => db.users, stateStore, dataDir: DATA, origin: ORIGIN, enabled: INTEGRATIONS_ENABLED })
 };
 
 /* ---------- Coach: boot recovery, notifications, scheduled reviews ---------- */
