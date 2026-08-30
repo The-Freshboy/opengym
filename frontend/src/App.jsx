@@ -19,6 +19,7 @@ import './personal.css'
 
 const Home = lazy(() => import('./views/Home.jsx'))
 const Personal = lazy(() => import('./views/Personal.jsx'))
+const HangTimer = lazy(() => import('./views/HangTimer.jsx'))
 const PhysioReport = lazy(() => import('./views/PhysioReport.jsx'))
 const Plan = lazy(() => import('./views/Plan.jsx'))
 const RoutineEdit = lazy(() => import('./views/RoutineEdit.jsx'))
@@ -61,7 +62,7 @@ function Shell() {
   // every tab/route change starts at the top of the page
   useEffect(() => { window.scrollTo(0, 0) }, [loc.pathname])
   // bound to the workout, not to the route — checking Stats mid-session keeps the screen on
-  useWakeLock(!!S.active && !editing && S.keepAwake !== false)
+  useWakeLock(((!!S.active && !editing) || loc.pathname === '/personal/timer') && S.keepAwake !== false)
 
   const authed = user || isGuest
   if (!ready && !authed) return (
@@ -83,6 +84,7 @@ function Shell() {
             <Routes>
               <Route path="/home" element={<Home />} />
               <Route path="/personal" element={<Personal />} />
+              <Route path="/personal/timer" element={<HangTimer />} />
               <Route path="/personal/export" element={<PhysioReport />} />
               <Route path="/plan" element={<Plan />} />
               <Route path="/plan/r/:id" element={<RoutineEdit />} />

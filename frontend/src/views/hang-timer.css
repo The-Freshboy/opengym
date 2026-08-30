@@ -1,0 +1,8 @@
+.hang-clock { text-align: center; padding: 28px 16px; }
+.hang-clock-work { border: 2px solid var(--accent); }
+.hang-digits { font-size: clamp(90px, 24vw, 180px); line-height: 1.25; font-weight: 700; font-variant-numeric: tabular-nums; }
+.hang-controls { display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; margin: 16px 0; }
+.hang-controls .btn { min-height: 56px; min-width: 110px; }
+.hang-settings { border: 0; padding: 16px 0; display: grid; gap: 16px; min-width: 0; }
+.hang-settings label { display: grid; gap: 6px; }
+.hang-timer-page summary { cursor: pointer; padding: 12px 0; }
