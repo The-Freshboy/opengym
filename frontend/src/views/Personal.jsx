@@ -6,7 +6,7 @@ import { Button } from '../components/ui.jsx'
 import Icon from '../components/Icon.jsx'
 import WeeklyDashboard from '../components/WeeklyDashboard.jsx'
 import { todayISO } from '../lib/format.js'
-import { GOAL_TEMPLATES, goalResults, goalReached, validateResult } from '../lib/personal.js'
+import { GOAL_TEMPLATES, goalResults, goalReached, validateResult, weeklySummary } from '../lib/personal.js'
 
 const resultLabel = (g, r) => !r ? 'Not tested' : g.kind === 'beep' ? `Level ${r.value}, shuttle ${r.shuttle}` : `${r.value} ${g.unit}`
 function GoalCard({ goal }) {
