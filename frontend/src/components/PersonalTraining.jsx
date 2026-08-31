@@ -55,6 +55,7 @@ export function RecentExerciseHistory({ id, excludeId }) {
       <div>{e.sets.filter(s => s.done).map((s, j) => <div className="small" key={j}>{setLabel(e.id, s, e.target)}{Number.isFinite(s.rir) ? ` · RIR ${s.rir}` : Number.isFinite(s.rpe) ? ` · RPE ${s.rpe}` : ''}</div>)}</div>
       {e.note && <p className="exnote">Exercise: {e.note}</p>}{e.sessionNote && <p className="exnote">Session: {e.sessionNote}</p>}
       {hangContextLabel(e.hangContext) && <p className="small">{hangContextLabel(e.hangContext)}</p>}
+      {e.setupContext && <p className="small">Equipment setup · {e.setupContext.location}: {e.setupContext.note || 'Not specified'}</p>}
       {nerveSymptomsReported(e.feedback) && <p className="small">Nerve symptoms were reported; review session feedback.</p>}
       <p className="small dim">{e.rating ? `Difficulty: ${e.rating}. ` : ''}{e.feedback?.energy ? `Energy: ${e.feedback.energy}/5. ` : ''}{e.feedback?.jointDiscomfort ? 'Joint discomfort reported.' : ''}</p>
     </article>)}

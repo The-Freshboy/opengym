@@ -522,9 +522,12 @@ function ExConfig({ ex, existing, onSave, onDelete, close, routine, addLabel }) 
     // Only carry progression settings that differ from the inherited default, so a plan file
     // stays readable and "follow the routine" keeps meaning exactly that.
     const prog = {}
+    if (c.restSec !== '' && c.restSec != null) {
+      if (!Number.isInteger(Number(c.restSec)) || Number(c.restSec) < 0 || Number(c.restSec) > 3600) { toast('Rest must be 0–3600 whole seconds, or blank.'); return }
+    }
     if (c.prog) prog.prog = c.prog
     if (c.inc > 0) prog.inc = c.inc
-    const demo = videoUrl ? { video: videoUrl } : {}
+    const demo = { ...(videoUrl ? { video: videoUrl } : {}), ...(c.restSec !== '' && c.restSec != null ? { restSec: Number(c.restSec) } : {}) }
     close()
     if (cardio) onSave({ sets, min: Math.max(1, Math.round(c.min) || 20), ...(speed ? { speed: Math.max(0, c.speed || 8) } : {}), ...demo })
     else if (mode === 'time') onSave({ sets, mode: 'time', sec: Math.max(1, Math.round(c.sec) || 45), weight: Math.max(0, c.weight || 0), ...prog, ...demo })
@@ -568,6 +571,8 @@ function ExConfig({ ex, existing, onSave, onDelete, close, routine, addLabel }) 
       {t('A timer runs while you hold the set. Leave the weight at 0 for bodyweight holds.')}
     </div>}
     <h4 className="sec">{t('Exercise demonstration')}</h4>
+    <label>Rest between sets (seconds)<input className="input" type="number" min="0" max="3600" step="1" placeholder={`Use default (${st.restSec}s)`} value={c.restSec ?? ''} onChange={e => setC(x => ({ ...x, restSec: e.target.value }))} /></label>
+    <p className="small dim">Leave blank to use your default. Zero disables automatic rest.</p>
     <input className="input" type="url" inputMode="url" autoCapitalize="none" autoCorrect="off"
       placeholder={t('Paste a YouTube link (optional)')} value={video} onChange={e => setVideo(e.target.value)} />
     <div className="small dim" style={{ margin: '6px 2px 14px' }}>{t('This video is attached to this exercise in the routine. The client chooses when to load it.')}</div>
@@ -1248,7 +1253,7 @@ function doFinishWorkout() {
     // `target` (what the session prescribed) is kept alongside the sets: without it a
     // finished workout cannot say whether it hit its reps, and a timed session reads back
     // as "0 reps". It is what the progression engine works from.
-    entries: A.entries.map(e => ({ id: e.id, sets: e.sets, topW: e.topW || null, target: e.target || null, ...(e.hangContext ? { hangContext: e.hangContext } : {}), ...(e.basePrescription ? { basePrescription: e.basePrescription } : {}), ...(e.proposal ? { progressionDecision: { status: e.proposal.status, evidenceDates: e.proposal.evidenceDates, decidedAt: e.proposal.decidedAt } } : e.progressionDecision ? { progressionDecision: e.progressionDecision } : {}), ...(e.note?.trim() ? { note: e.note.trim().slice(0, 500) } : {}) })).filter(e => e.sets.some(s => s.done)),
+    entries: A.entries.map(e => ({ id: e.id, sets: e.sets, topW: e.topW || null, target: e.target || null, ...(e.setupContext ? { setupContext: e.setupContext } : {}), ...(e.restSec != null ? { restSec: e.restSec } : {}), ...(e.hangContext ? { hangContext: e.hangContext } : {}), ...(e.basePrescription ? { basePrescription: e.basePrescription } : {}), ...(e.proposal ? { progressionDecision: { status: e.proposal.status, evidenceDates: e.proposal.evidenceDates, decidedAt: e.proposal.decidedAt } } : e.progressionDecision ? { progressionDecision: e.progressionDecision } : {}), ...(e.note?.trim() ? { note: e.note.trim().slice(0, 500) } : {}) })).filter(e => e.sets.some(s => s.done)),
     variant: A.variant || preserved.variant || 'full', unit: editing ? preserved.unit : (A.unit || st.unit),
     ...(A.trainingContext ? { trainingContext: A.trainingContext } : {}),
     ...(A.note?.trim() ? { note: A.note.trim().slice(0, 1000) } : {}),

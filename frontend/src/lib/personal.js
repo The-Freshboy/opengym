@@ -24,7 +24,7 @@ export function preparePersonalEntry(S, cfg, routine, today) {
   const contextKey = equipmentKey(trainingContext(S.trainingPreferences))
   const last = rows.find(e => e.routineId === routine?.id && (!e.unit || e.unit === S.unit) && equipmentKey(e.trainingContext) === contextKey)
   const baselineState = { ...S, workouts: [], exWeights: {} }
-  const carry = sameBase(last) && !last.hangContext ? { ...last, sets: last.sets.filter(s => s.type !== 'warmup') } : null
+  const carry = sameBase(last) && !last.hangContext && !last.setupContext ? { ...last, sets: last.sets.filter(s => s.type !== 'warmup') } : null
   const target = { ...cfg }
   if (carry?.basePrescription && policyFor(cfg, routine, mode) !== 'off') {
     // These are already accepted targets, not a new increase. Keep them until the
@@ -45,7 +45,7 @@ export function preparePersonalEntry(S, cfg, routine, today) {
     return entry
   }
   if (policyFor(cfg, routine, mode) === 'off' || mode === 'cardio') return entry
-  if (rows.slice(0, 3).some(e => e.hangContext)) {
+  if (rows.slice(0, 3).some(e => e.hangContext || e.setupContext)) {
     plan.why = ['Assistance context needs individual comparison. Keep targets and review manually; no progression is suggested.']
     return entry
   }

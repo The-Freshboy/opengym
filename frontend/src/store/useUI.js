@@ -40,12 +40,13 @@ export const useUI = create((set, get) => ({
 
   startRest(sec) {
     get().stopRest()
+    if (!Number.isFinite(sec) || sec <= 0) return
     const endsAt = Date.now() + sec * 1000
     set({ timer: { left: sec, total: sec, endsAt } })
     pushRestTimer(sec)
     timerTick = () => {
       const tm = get().timer
-      if (!tm) return
+      if (!tm || tm.paused) return
       const left = Math.max(0, Math.round((tm.endsAt - Date.now()) / 1000))
       if (left === tm.left) return
       const snd = useStore.getState().S.sound
@@ -67,7 +68,21 @@ export const useUI = create((set, get) => ({
     // negative duration out of both the progress bar and the server-side push schedule
     if (left <= 0) { get().stopRest(); return }
     set({ timer: { ...tm, left, total: tm.total + sec, endsAt: tm.endsAt + sec * 1000 } })
-    pushRestTimer(left)
+    if (!tm.paused) pushRestTimer(left)
+  },
+  pauseRest() {
+    const tm = get().timer
+    if (!tm || tm.paused) return
+    const left = Math.max(0, Math.ceil((tm.endsAt - Date.now()) / 1000))
+    if (!left) { get().stopRest(); return }
+    cancelPushRestTimer()
+    set({ timer: { ...tm, left, paused: true } })
+  },
+  resumeRest() {
+    const tm = get().timer
+    if (!tm?.paused) return
+    set({ timer: { ...tm, paused: false, endsAt: Date.now() + tm.left * 1000 } })
+    pushRestTimer(tm.left)
   },
   stopRest() {
     if (timerInt) clearInterval(timerInt); timerInt = null

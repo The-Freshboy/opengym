@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 import { createPortal } from 'react-dom'
 import Icon from '../components/Icon.jsx'
 import { useStore } from '../store/useStore.js'
@@ -7,11 +7,16 @@ import { useUI } from '../store/useUI.js'
 import { beep, vibrate } from '../lib/sound.js'
 import { TIMER_DEFAULTS, TIMER_FIELDS, timerError, timerPhases, phaseRemaining, timerClock, remainingSession } from '../lib/hang-timer.js'
 import './hang-timer.css'
+import { linkIsCurrent, confirmLinkedHangs } from '../lib/session-tools.js'
+import { exOr } from '../lib/exercises.js'
 
 export default function HangTimer() {
   const nav = useNavigate(), { S, update } = useStore()
+  const link = useLocation().state?.hangLink
+  const currentLink = linkIsCurrent(S, link)
+  const [achieved, setAchieved] = useState(() => (link?.indices || []).map(() => ''))
   const otherTimer = useUI(s => !!s.timer || !!s.work)
-  const [config, setConfig] = useState({ ...TIMER_DEFAULTS })
+  const [config, setConfig] = useState({ ...(link?.config || TIMER_DEFAULTS) })
   const [phases, setPhases] = useState([]), [index, setIndex] = useState(0)
   const [status, setStatus] = useState('idle'), [remaining, setRemaining] = useState(0)
   const [message, setMessage] = useState(''), [name, setName] = useState('')
@@ -20,7 +25,7 @@ export default function HangTimer() {
   const deadline = useRef(0), timeLeft = useRef(0), lastTick = useRef(0), lastCue = useRef(-1)
   const phase = phases[index], locked = status === 'running' || status === 'paused'
   const presets = (S.personal?.hangTimerPresets || []).slice(0, 20)
-  const error = timerError(config)
+  const error = link && !currentLink ? 'The linked workout changed. Return to your workout and launch a fresh timer.' : timerError(config)
   const signal = () => { beep(S.sound !== false, 880, 0.18); if (S.haptics !== false) vibrate(100) }
   const pause = (reason = '') => {
     timeLeft.current = phaseRemaining(deadline.current, performance.now())
@@ -98,7 +103,8 @@ export default function HangTimer() {
     }
   }
   return <div className="narrow hang-timer-page">
-    <div className="hdr"><h1>Hang interval timer</h1><button className="btn" onClick={() => { if (!locked || window.confirm('Leave and stop this timer? No workout sets will be logged.')) nav('/personal') }}>Back</button></div>
+    <div className="hdr"><h1>Hang interval timer</h1><button className="btn" onClick={() => { if (!locked || window.confirm('Leave and stop this timer? No workout sets will be logged.')) nav(link ? '/workout' : '/personal') }}>Back</button></div>
+    {link && <section className="card"><h2>Linked to {exOr(link.exerciseId).n}</h2><p>Uses the remaining working-set targets in your active session. Warm-ups are not included. Change targets in the workout before launching a new timer.</p>{error && <p role="alert">{error}</p>}</section>}
     <p className="small dim">Tabata-style controls, not a Tabata training prescription. Follow your agreed hang dose; timer completion does not log a set or test result.</p>
     <section className={`card hang-clock ${phase?.kind === 'Hang' && locked ? 'hang-clock-work' : ''}`}>
       <h2 aria-live="polite">{status === 'idle' ? 'Ready when you are' : status === 'finished' ? 'Intervals finished' : `${phase?.kind}${status === 'paused' ? ' · paused' : ''}`}</h2>
@@ -117,8 +123,12 @@ export default function HangTimer() {
       {status === 'finished' && <p>Nothing has been added to your workout log. Record only the hangs you actually completed.</p>}
     </section>
     <p className="small dim">Keep this screen open. Switching apps or locking the phone pauses the timer; background sounds are not guaranteed. Leaving this page stops it. Sound and vibration follow your app settings.</p>
+    {link && <section className="card"><h2>Confirm achieved holds</h2><p>Enter only seconds actually held. Leave unperformed sets blank. These are self-reported practice results, not verified tests.</p>
+      {link.indices.map((setIndex, i) => <label key={setIndex}>Set {setIndex + 1} achieved seconds<input className="input" type="number" min="1" max="3600" step="1" value={achieved[i]} disabled={status === 'running' || !currentLink} onChange={e => setAchieved(v => v.map((value, j) => i === j ? e.target.value : value))} /></label>)}
+      <button className="btn primary" disabled={status === 'running' || !currentLink || !achieved.some(v => v !== '')} onClick={() => { try { update(s => confirmLinkedHangs(s, link, achieved)); nav('/workout') } catch (e) { setMessage(e.message) } }}>Confirm and save entered holds</button>
+    </section>}
     <details open={!locked} className="card"><summary>Intervals and presets</summary>
-      <fieldset disabled={locked} className="hang-settings">
+      <fieldset disabled={locked || !!link} className="hang-settings">
         {Object.entries(TIMER_FIELDS).map(([key, label]) => <label key={key}>{label}{!['sets', 'cycles'].includes(key) && ' (seconds)'}<input className="input" type="number" inputMode="numeric" min={['hang', 'sets', 'cycles'].includes(key) ? 1 : 0} max={['sets', 'cycles'].includes(key) ? 50 : 3600} step="1" value={config[key]} onChange={e => setConfig(c => ({ ...c, [key]: e.target.value }))} /></label>)}
         {error && <p role="alert">{error}</p>}
         <p className="small dim">Rest occurs between sets, recovery between cycles. Zero skips an optional interval. Example values are editable, not a new prescription.</p>

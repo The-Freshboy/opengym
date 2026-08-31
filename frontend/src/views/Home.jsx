@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import SyncConfidence from '../components/SyncConfidence.jsx'
 import { useStore } from '../store/useStore.js'
 import { effectiveRoutine, effectiveRoutineIds, streakWeeks, lastBW, setsDone, setsDoneActive, routineIds, sessionLoadLabel } from '../lib/history.js'
 import { fmtNum, fmtDate, todayISO, isoOf, weekKey, DAYS } from '../lib/format.js'
@@ -102,6 +103,7 @@ export default function Home() {
 
     {syncConflict && <div className="card tappable" style={{ borderColor: 'var(--orange)' }} onClick={() => nav('/settings/sync')}><div className="row between"><div><b>Sync needs your choice</b><div className="small dim">This profile changed on another device.</div></div><Icon name="chevronRight" /></div></div>}
 
+    <SyncConfidence />
     <div className="card"><div className="row between"><div><h2>Your training</h2><div className="small dim">Goals, test results and your weekly summary</div></div><Button onClick={() => nav('/personal')}>Open</Button></div></div>
     {pt && (pt.goal || pt.message || pt.plan) && <div className="card" style={{ borderColor: pt.plan ? 'var(--acc)' : undefined }}>
       <div className="row between"><h2 style={{ margin: 0 }}>{t('From your PT')}</h2>{pt.status && <span className="tag acc">{pt.status}</span>}</div>

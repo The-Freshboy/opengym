@@ -10,6 +10,7 @@ export function reuseReason(active, entry, workout, previous) {
   if ((workout.entries || []).filter(e => e.id === entry.id).length > 1) return 'Multiple previous entries match; enter your targets manually.'
   if (!workout.unit || workout.unit !== active.unit) return 'Weight units differ or were not recorded.'
   if (equipmentKey(workout.trainingContext) !== equipmentKey(active.trainingContext)) return 'Equipment profile differs.'
+  if (normal(previous.setupContext?.note) !== normal(entry.setupContext?.note)) return 'Equipment setup differs or has not been confirmed for this session.'
   const mode = modeOf({ ...entry.target, id: entry.id })
   if (mode !== modeOf({ ...previous.target, id: previous.id })) return 'Logging mode differs.'
   if (normal(entry.target?.repsConvention) !== normal(previous.target?.repsConvention)) return 'Repetition convention differs.'

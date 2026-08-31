@@ -55,8 +55,9 @@ export const useStore = create((set, get) => {
   const persist = (S, push = true) => {
     if (push) S._ts = Date.now()
     registerCustom(S.customEx)
-    localStorage.setItem(KEY, JSON.stringify(S))
-    set({ S })
+    try { localStorage.setItem(KEY, JSON.stringify(S)) }
+    catch (e) { set({ localSaveError: 'Browser storage rejected the latest change' }); throw e }
+    set({ S, localSaveError: null, lastLocalSaveAt: new Date().toISOString() })
     if (MOBILE) nativePersist()
     if (push && get().user) {
       localStorage.setItem('gym_dirty', '1')
@@ -104,6 +105,7 @@ export const useStore = create((set, get) => {
     user: (() => { try { return JSON.parse(localStorage.getItem('gym_user')) || null } catch { return null } })(),
     ready: false,
     syncStatus: 'unknown', syncError: null, lastSyncedAt: null,
+    localSaveError: null, lastLocalSaveAt: null,
     syncConflict: (() => { try { return JSON.parse(localStorage.getItem(CONFLICT_KEY)) || null } catch { return null } })(),
     // Instance capabilities from GET /api/config. `config.coach` is present only when the
     // owner has both enabled the Coach and connected a provider — every Coach entry point in

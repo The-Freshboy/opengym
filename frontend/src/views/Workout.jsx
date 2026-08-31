@@ -19,6 +19,9 @@ import { RecentExerciseHistory, ProgressionApproval } from '../components/Person
 import { LastTime, HoldLoggingContext } from '../components/WorkoutReference.jsx'
 import { repeatLastSessionPlan, applyRepeatedSets } from '../lib/workout-reuse.js'
 import { preparePersonalEntry } from '../lib/personal.js'
+import SessionTools from '../components/SessionTools.jsx'
+import SyncConfidence from '../components/SyncConfidence.jsx'
+import { exerciseRest, deferExercise } from '../lib/session-tools.js'
 
 /* ---------- start chooser (no active workout) ---------- */
 function StartChooser() {
@@ -124,6 +127,7 @@ function ExerciseBlock({ entryIdx, compact, editing, onToggle, onField, onAddSet
     {entry.target?.repsConvention && <p className="small dim">Repetitions: {entry.target.repsConvention === 'per-side' ? 'enter reps for each side' : entry.target.repsConvention === 'total-both-sides' ? 'enter the total across both sides' : entry.target.repsConvention}. No counts are automatically converted.</p>}
     {timed && <HoldLoggingContext entryIdx={entryIdx} />}
     {!editing && <ProgressionApproval entryIdx={entryIdx} />}
+    {!editing && <SessionTools key={`${S.active.id}-${entryIdx}-${entry.id}`} index={entryIdx} />}
     {plan && plan.why && plan.kind !== 'off' && <div className={'progline' + (plan.kind === 'deload' ? ' warn' : '')}>
       <Icon name={plan.kind === 'up' ? 'arrowUp' : plan.kind === 'deload' ? 'arrowDown' : 'lightbulb'} />
       <span>{t(...plan.why)}</span>
@@ -235,7 +239,7 @@ function ActiveWorkout() {
         beep(S.sound, 1040, 0.12); if (S.haptics !== false) vibrate(30)
         const isLastExInUnit = idx === unit[unit.length - 1]
         const unitDone = unit.every(ui => (ui === idx ? e : A.entries[ui]).sets.every(x => x.done))
-        if (isLastExInUnit && !unitDone) startRest(S.restSec)
+        if (isLastExInUnit && !unitDone) startRest(exerciseRest(S, e))
         else if (unitDone) stopRest()
         if (!editing && unitDone && isLastUnit) workoutDone = true
         // Only reps training has a "working weight" worth confirming — a bodyweight plank
@@ -286,6 +290,7 @@ function ActiveWorkout() {
       <div className="row" style={{ gap: 2 }}>{!editing && <button className="iconbtn" style={{ color: S.keepAwake !== false ? 'var(--yellow)' : undefined }} aria-label={t('Keep screen awake')} title={t('Keep screen awake')} onClick={() => update(s => { s.keepAwake = s.keepAwake === false })}><Icon name="sun" /></button>}<button className="iconbtn" style={{ color: 'var(--acc)' }} aria-label={editing ? t('Save changes') : t('Finish')} onClick={() => finishWorkout()}><Icon name="check" /></button></div>
     </div>
     {!editing && <div className="wprog"><i style={{ width: (total ? done / total * 100 : 0) + '%' }} /></div>}
+    <SyncConfidence compact />
     {A.trainingContext?.equipmentProfile && <p className="small dim">Equipment: {A.trainingContext.equipmentProfile.name}. This context does not substitute exercises or adjust loads.</p>}
     {A.trainingContext?.plannedMinutes && <p className="small dim">Planned time: {A.trainingContext.plannedMinutes} minutes — a preference, not a required duration.</p>}
     {repeatPlan && <section className="card" aria-label="Repeat last session">
@@ -313,6 +318,8 @@ function ActiveWorkout() {
       )}
       <div style={{ height: 10 }} /><TextArea rows={2} maxLength={500} value={A.entries[cur]?.note || ''} onChange={e => update(s => { const en = s.active.entries[cur]; if (en) en.note = e.target.value })} placeholder={t('Exercise note (optional)')} />
       <div className="row" style={{ gap: 8, marginTop: 8 }}><Button size="sm" icon="shuffle" disabled={!editing && A.entries[cur]?.target?.mandatory} onClick={() => replaceExercise(cur)}>{t('Replace exercise')}</Button></div>
+      {!editing && <Button size="sm" disabled={!!workTimer || !!useUI.getState().timer || unitIdx === units.length - 1 || unit.some(i => A.entries[i].sets.some(s => s.done))} onClick={() => update(s => { if (!useUI.getState().work && !useUI.getState().timer) deferExercise(s, cur) })}>Equipment busy — move {isSuperset ? 'superset' : 'exercise'} to the end</Button>}
+      {!editing && <p className="small dim">Moves only unstarted exercises in this session. Supersets stay together; mandatory exercises remain included.</p>}
     </> : <div className="empty"><div className="ico"><Icon name="shuffle" /></div>{t('Freestyle workout — add your first exercise.')}</div>}
 
     <div style={{ height: 12 }} />
