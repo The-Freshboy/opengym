@@ -42,7 +42,7 @@ export default function Coach() {
   const toast = useUI(s => s.toast)
   const [note, setNote] = useState('')
   const [busy, setBusy] = useState(false)
-  const { job, pending, cap, refresh } = useCoachStatus(true)
+  const { job, pending, cap, loading, error, refresh } = useCoachStatus(true)
 
   // Gating lives in one predicate; if the instance isn't offering the Coach this route simply
   // isn't a place you can be.
@@ -90,7 +90,7 @@ export default function Coach() {
     <div className="hdr">
       <button className="iconbtn" onClick={() => nav('/plan')} aria-label={t('Back')}><Icon name="chevronLeft" /></button>
       <div style={{ flex: 1, marginLeft: 10 }}>
-        <h1>{t('Coach')}</h1>
+        <h1>{t('AI Coach')}</h1>
         <div className="sub">{t('Plan design and reviews, from your own training')}</div>
       </div>
     </div>
@@ -98,20 +98,24 @@ export default function Coach() {
     {!consented
       ? <ConsentCard onDone={() => refresh()} />
       : <>
+        <div className="card" role="status" aria-live="polite">
+          <h2 style={{ margin: '0 0 8px' }}>{t(loading ? 'Checking review status…' : error ? 'Status unavailable' : job ? 'Review in progress' : pending ? 'Ready for your approval' : 'Ready to review')}</h2>
+          <p className="muted small">{t('You stay in control: suggestions do not change your programme until you approve them.')}</p>
+          {error && <><p className="small">{t(error)}</p><Button onClick={refresh}>{t('Retry connection')}</Button></>}
+          {cap?.limit > 0 && <div className="dim small">{t('{0} of {1} Coach runs used today', cap.used, cap.limit)}</div>}
+        </div>
         <StatusCard job={job} pending={pending} nav={nav} />
 
         {!job && !pending && <div className="card">
-          <h2 style={{ margin: '0 0 6px' }}>{t('Scientific training review')}</h2>
+          <h2 style={{ margin: '0 0 6px' }}>{t('Review my training')}</h2>
           <div className="muted small" style={{ marginBottom: 10 }}>
-            {t('OpenGym analyses your synced plan and completed sessions, checks conservative research-backed signals, and suggests only changes you approve. No JSON export is needed.')}
+            {t('Review your synced programme, logged weights, effort and session comments. The Coach does not browse new research during a review; substantial changes should be checked against current evidence and your EP’s advice.')}
           </div>
-          <TextArea rows={2} value={note} maxLength={1000} onChange={e => setNote(e.target.value)}
+          <label htmlFor="coach-review-note" className="small">{t('What should this review focus on? (optional)')}</label>
+          <TextArea id="coach-review-note" rows={3} value={note} maxLength={1000} onChange={e => setNote(e.target.value)}
             placeholder={t('Anything it should know? (optional) — e.g. “right shoulder pinches on overhead work”')} />
           <div style={{ height: 10 }} />
-          <Button variant="primary" icon="sparkles" disabled={busy} onClick={askReview}>{t('Run scientific review')}</Button>
-          {cap?.limit > 0 && <div className="dim small" style={{ marginTop: 8, textAlign: 'center' }}>
-            {t('{0} of {1} Coach runs used today', cap.used, cap.limit)}
-          </div>}
+          <Button variant="primary" icon="sparkles" disabled={busy || loading || !!error || (cap?.limit > 0 && cap.used >= cap.limit)} onClick={askReview}>{t(busy ? 'Requesting review…' : cap?.limit > 0 && cap.used >= cap.limit ? 'Daily review limit reached' : 'Review my training')}</Button>
         </div>}
 
         {!S.routines.length && <div className="card">
@@ -122,7 +126,7 @@ export default function Coach() {
         <CadenceCard coach={coach} update={update} />
 
         <Section title={t('Coach profile')} footer={t('Used by every proposal — keep limitations here up to date.')}>
-          <Row icon="clipboard" iconTint="var(--indigo)" title={t('Your answers')}
+          <Row icon="clipboard" iconTint="var(--indigo)" title={t('Goals, availability and restrictions')}
             subtitle={coach.profile ? summarise(coach.profile) : t('Not set yet')}
             accessory="chevron" onClick={() => nav('/coach/intake?edit=1')} />
         </Section>
@@ -224,6 +228,7 @@ function StatusCard({ job, pending, nav }) {
       </div>
       <span className="tag acc">{t('Review')}</span>
     </div>
+    <Button variant="primary" onClick={() => nav('/coach/proposal')}>{t('Review proposed changes')}</Button>
   </div>
 
   return null
@@ -274,7 +279,7 @@ function CadenceCard({ coach, update }) {
 function LogCard({ coach }) {
   const openSheet = useUI(s => s.openSheet)
   const log = [...(coach.log || [])].reverse()
-  if (!log.length) return null
+  if (!log.length) return <Section title={t('Review history')} footer={t('Completed reviews and your decisions will appear here. No reviews recorded yet.')} />
 
   const detail = e => openSheet(close => <>
     <h3>{e.kind === 'create' ? t('Plan from the Coach') : e.kind === 'revert' ? t('Undo') : t('Coach review')}</h3>
@@ -297,7 +302,7 @@ function LogCard({ coach }) {
   </>)
 
   return <>
-    <h4 className="sec">{t('Coach history')}</h4>
+      <h4 className="sec">{t('Review history')}</h4>
     <div className="list">
       {log.slice(0, 20).map(e => {
         const applied = (e.decisions || []).filter(d => d.status === 'accepted').length

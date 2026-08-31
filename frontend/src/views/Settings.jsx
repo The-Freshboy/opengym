@@ -48,6 +48,8 @@ export default function Settings() {
   const { update, replaceState, setUser, pullState, pushState, signOut, signOutAll, resetDemo } = useStore()
   const toast = useUI(s => s.toast)
   const fileRef = useRef(null)
+  const [signInBusy, setSignInBusy] = useState(false)
+  const [signInError, setSignInError] = useState('')
   const reviewRef = useRef(null)
   const importRef = useRef(null)
   const wakeOK = wakeLockSupported()
@@ -145,8 +147,15 @@ export default function Settings() {
     }
   })
   const signInHere = async () => {
+    if (signInBusy) return
+    setSignInError('')
+    if (!webauthnOK()) { setSignInError('Passkeys are not available in this browser. Open https://gym.netfresh.site in your usual browser and sign in to your existing profile there.'); return }
+    setSignInBusy(true)
     try { const u = await passkeyLogin(); setUser(u); await pullState(); toast(t('Welcome back, {0}', u.name)) }
-    catch (e) { if (e.name !== 'NotAllowedError' && e.name !== 'AbortError') toast(e.message || t('Sign-in failed')) }
+    catch (e) { setSignInError(e.name === 'NotAllowedError' || e.name === 'AbortError'
+      ? 'Passkey sign-in was cancelled, timed out or could not open. Try again, or use your usual browser with the password manager that holds your existing passkey. Do not create a new profile.'
+      : e.message || t('Sign-in failed')) }
+    finally { setSignInBusy(false) }
   }
   const registerHere = () => useUI.getState().openSheet(close => <RegisterInline close={close} setUser={setUser} pushState={pushState} pullState={pullState} toast={toast} />)
   // Ends the profile's sessions on every device — this one included, so on success it lands in
@@ -188,7 +197,9 @@ export default function Settings() {
         <Row icon="shield" iconTint="var(--red)" title={t('Sign out everywhere')} subtitle={t('Ends this profile’s sessions on all your devices.')} danger onClick={signOutEverywhere} />
       </> : webauthnOK() ? <>
         <Row icon="sparkles" iconTint="var(--acc)" title={t('Create passkey profile')} subtitle={t('Keeps your data safe and separate per person.')} accessory="chevron" onClick={registerHere} />
-        <Row icon="person" iconTint="var(--blue)" title={t('Sign in with passkey')} accessory="chevron" onClick={signInHere} />
+        <Row icon="person" iconTint="var(--blue)" title={t(signInBusy ? 'Waiting for passkey…' : 'Sign in with passkey')} accessory="chevron" onClick={signInHere} />
+        {signInBusy && <p className="small muted" role="status">{t('Complete the passkey prompt from your browser or password manager.')}</p>}
+        {signInError && <p className="small" role="alert" style={{ padding: '0 16px 12px', overflowWrap: 'anywhere' }}>{signInError}</p>}
       </> : (
         <Row icon="lock" iconTint="var(--grey)" title={t('Passkeys not supported in this browser.')} />
       )}

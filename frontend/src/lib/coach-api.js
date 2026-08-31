@@ -43,10 +43,10 @@ export function useCoachStatus(active = true) {
   const refresh = useCallback(async () => {
     try {
       const s = await coachStatus()
-      setState({ ...s, loading: false })
+      setState({ ...s, loading: false, error: null })
       return s
     } catch {
-      setState(s => ({ ...s, loading: false }))
+      setState(s => ({ ...s, loading: false, error: 'Could not check Coach status. Check your connection and try again.' }))
       return null
     }
   }, [])

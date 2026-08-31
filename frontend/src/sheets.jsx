@@ -426,6 +426,7 @@ function usageMap(st) {
   return u
 }
 function ExercisePicker({ onPick, close }) {
+  const pick = ex => { close(); onPick(ex) }
   const st = useStore(s => s.S)
   const update = useStore(s => s.update)
   const usage = usageMap(st)
@@ -461,11 +462,11 @@ function ExercisePicker({ onPick, close }) {
       {eqOpts.map(x => <button key={x} className={'chip' + (eqOn === x ? ' on' : '')} onClick={() => { setEq(x); setShown(50) }}>{t(x)}</button>)}
     </div>}
     <div className="list">
-      {bp !== '★' && <div className="item" onClick={() => customExSheet(null, ex => onPick(ex), q.trim())}>
+      {bp !== '★' && <div className="item" onClick={() => customExSheet(null, pick, q.trim())}>
         <div className="thumb thumb-x"><Icon name="sparkles" /></div>
         <div className="grow"><div className="tt">{t('Create your own exercise')}</div><div className="ss">{t('name + body part')}</div></div><Icon name="plus" className="chev" />
       </div>}
-      {f.slice(0, shown).map(e => <div key={e.id} className="item" onClick={() => onPick(e)}>
+      {f.slice(0, shown).map(e => <div key={e.id} className="item" onClick={() => pick(e)}>
         <Thumb ex={e} /><div className="grow"><div className="tt capitalize">{e.n}</div><div className="ss capitalize">{t(e.tg || e.bp)} · {t(e.eq)}</div></div>
         <button className="iconbtn" aria-label={t('Favourite')} onClick={ev => { ev.stopPropagation(); update(s => { s.favoriteEx ||= []; s.favoriteEx = s.favoriteEx.includes(e.id) ? s.favoriteEx.filter(id => id !== e.id) : [...s.favoriteEx, e.id] }) }}><Icon name={(st.favoriteEx || []).includes(e.id) ? 'heart' : 'star'} /></button>{usage[e.id] && <span className="tag acc"><Icon name="starFill" /></span>}<Icon name="plus" className="chev" />
       </div>)}
