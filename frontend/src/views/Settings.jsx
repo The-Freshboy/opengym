@@ -25,18 +25,27 @@ import { EXIDX } from '../lib/exercises.js'
 
 const PLAN_RECOVERY_KEY = 'gym_reviewed_plan_recovery'
 
-function ReviewedBackupSheet({ current, incoming, preview, close, apply }) {
+export function ReviewedBackupSheet({ current, incoming, preview, filename, close, apply }) {
   return <>
     <h3>Review plan update</h3>
+    <p className="small" style={{ overflowWrap: 'anywhere' }}>Selected file: <strong>{filename}</strong></p>
     <p className="small muted">Only routines and planning data will change. Completed workouts, body weight, preferences and account data will be preserved.</p>
+    <p className="small muted">Finish or save any active workout first. A recovery copy of your current plan is saved before applying changes.</p>
+    {!preview.changed && <div role="status"><h4>No plan changes found</h4><p className="small muted">The routines, weekly schedule, dated plan, custom exercises and starting weights in this file match your current plan. It may already have been imported, or you may have selected the original backup. Differences in workout history or preferences are not applied by this importer. Nothing has been changed.</p></div>}
     <div className="list" style={{ margin: '12px 0' }}>
       {preview.sections.map(section => <div className="item" key={section.key} style={{ alignItems: 'flex-start' }}>
         <Icon name="check" style={{ color: 'var(--green)', marginTop: 2 }} />
-        <div className="grow"><div className="tt">{section.label}</div><div className="ss">{section.summary}</div>
-          {!!section.details.length && <div className="dim" style={{ fontSize: '.7rem', marginTop: 4 }}>{section.details.join(' · ')}</div>}</div>
+        <div className="grow" style={{ minWidth: 0, overflowWrap: 'anywhere' }}><div className="tt">{section.label}</div><div className="ss">{section.summary}</div>
+          <details style={{ marginTop: 8 }}><summary style={{ cursor: 'pointer', padding: '8px 0' }}>Show exact changes ({section.changes.length})</summary>
+            {section.changes.map((change, index) => <div key={index} style={{ borderTop: '1px solid var(--border)', padding: '10px 0', fontSize: '.8rem' }}>
+              <strong>{change.field}</strong>
+              <div style={{ marginTop: 5, whiteSpace: 'pre-wrap' }}><span className="muted">Current: </span>{change.before}</div>
+              <div style={{ marginTop: 5, whiteSpace: 'pre-wrap' }}><span className="muted">Incoming: </span>{change.after}</div>
+            </div>)}
+          </details></div>
       </div>)}
     </div>
-    <div className="row" style={{ gap: 8 }}><Button style={{ flex: 1 }} onClick={close}>Cancel</Button><Button variant="primary" style={{ flex: 1 }} onClick={() => apply(current, incoming, close)}>Apply plan changes</Button></div>
+    <div className="row" style={{ gap: 8, position: 'sticky', bottom: 0, background: 'var(--bg)', padding: '12px 0' }}><Button style={{ flex: 1 }} onClick={close}>{preview.changed ? 'Cancel' : 'Close'}</Button>{preview.changed && <Button variant="primary" style={{ flex: 1 }} onClick={() => apply(current, incoming, close)}>Apply plan changes</Button>}</div>
   </>
 }
 
@@ -89,11 +98,12 @@ export default function Settings() {
         const protection = protectedPlanErrors(useStore.getState().S, data)
         if (protection.length) throw new Error(protection.join(' '))
         if (useStore.getState().S.active) throw new Error('Finish or save your active workout before importing a plan.')
-        const preview = compareReviewedBackup(S, data)
-        if (!preview.changed) return toast('No plan changes found in this backup')
-        useUI.getState().openSheet(close => <ReviewedBackupSheet current={S} incoming={data} preview={preview} close={close}
+        const currentState = useStore.getState().S
+        const preview = compareReviewedBackup(currentState, data, Object.fromEntries(Object.values(EXIDX).map(ex => [ex.id, ex.n])))
+        useUI.getState().openSheet(close => <ReviewedBackupSheet current={currentState} incoming={data} preview={preview} filename={f.name} close={close}
           apply={(current, incoming, done) => {
             if (JSON.stringify(useStore.getState().S) !== JSON.stringify(current)) return toast('Your data changed during preview. Open the import again.')
+            if (useStore.getState().S.active) return toast('Finish or save your active workout before importing a plan.')
             localStorage.setItem(PLAN_RECOVERY_KEY, JSON.stringify(snapshotPlan(current)))
             update(next => applyReviewedPlan(next, incoming))
             setHasPlanRecovery(true)

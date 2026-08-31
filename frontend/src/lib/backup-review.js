@@ -8,6 +8,26 @@ const canonical = value => Array.isArray(value) ? value.map(canonical)
 const same = (a, b) => JSON.stringify(canonical(a ?? null)) === JSON.stringify(canonical(b ?? null))
 const byId = list => new Map((list || []).map(item => [String(item.id), item]))
 const names = list => list.slice(0, 8).map(x => x.name || x.n || x.id)
+const FIELD_LABELS = { ex: 'Exercises', sets: 'Sets', reps: 'Reps', repsMin: 'Minimum reps', repsConvention: 'Rep counting', w: 'Weight', weight: 'Weight', rest: 'Rest (seconds)', sec: 'Duration (seconds)', min: 'Duration (minutes)', speed: 'Speed (km/h)', duration: 'Duration', seconds: 'Seconds', name: 'Name', n: 'Name', desc: 'Instructions', note: 'Notes', notes: 'Notes', d: 'Date', id: 'ID', mode: 'Tracking mode', progression: 'Progression', video: 'Demonstration video' }
+const displayValue = value => value === undefined ? 'Not set' : value === null ? 'None' : typeof value === 'string' ? (value || '(empty)') : JSON.stringify(value)
+
+// Leaf-level comparisons also expose less common prescription fields rather than silently
+// omitting them. Array positions are deliberate: exercise order is part of a routine.
+function fieldChanges(before, after, path, exerciseNames) {
+  if (same(before, after) && (before === undefined) === (after === undefined)) return []
+  const object = value => value !== null && typeof value === 'object'
+  if ((object(before) || before === undefined) && (object(after) || after === undefined) && (object(before) || object(after))) {
+    const keys = [...new Set([...Object.keys(before || {}), ...Object.keys(after || {})])]
+    if (keys.length) return keys.flatMap(key => {
+      const item = after?.[key] ?? before?.[key]
+      const label = Array.isArray(before) || Array.isArray(after)
+        ? `${Number(key) + 1}. ${item?.name || item?.n || exerciseNames[item?.id] || item?.id || 'Item'}`
+        : FIELD_LABELS[key] || key
+      return fieldChanges(before?.[key], after?.[key], `${path} → ${label}`, exerciseNames)
+    })
+  }
+  return [{ field: path, before: displayValue(before), after: displayValue(after) }]
+}
 
 export function validateReviewedBackup(data) {
   const errors = []
@@ -40,7 +60,8 @@ function listChanges(current, incoming, label) {
   return { label, changed: !!(added.length || removed.length || changed.length), added, removed, modified: changed }
 }
 
-export function compareReviewedBackup(current, incoming) {
+export function compareReviewedBackup(current, incoming, catalogueNames = {}) {
+  const exerciseNames = { ...catalogueNames, ...Object.fromEntries([...(current.customEx || []), ...(incoming.customEx || [])].map(ex => [ex.id, ex.n || ex.name || ex.id])) }
   const routines = listChanges(current.routines, incoming.routines, 'Routines and exercises')
   const custom = listChanges(current.customEx, incoming.customEx, 'Custom exercises')
   const weekDays = [...new Set([...Object.keys(current.week || {}), ...Object.keys(incoming.week || {})])].filter(k => !same(current.week?.[k], incoming.week?.[k]))
@@ -57,6 +78,22 @@ export function compareReviewedBackup(current, incoming) {
       details: [...names(custom.added), ...names(custom.modified), ...names(custom.removed)].slice(0, 8) },
     { key: 'exWeights', label: 'Starting weights and progression', changed: !!weights.length, count: weights.length, summary: `${weights.length} exercises changed`, details: weights.slice(0, 8) }
   ]
+  const routineName = (state, id) => state.routines?.find(r => String(r.id) === String(id))?.name || String(id)
+  const scheduleValue = (state, value) => value === undefined ? 'Not set' : value === null || value === 'rest' ? 'Rest' : (Array.isArray(value) ? value : [value]).map(id => routineName(state, id)).join(' + ')
+  for (const section of sections) {
+    // Detect reordering too, even when every ID and prescription is unchanged.
+    section.changed = !same(current[section.key], incoming[section.key])
+    if (section.key === 'week' || section.key === 'dayPlan') {
+      const keys = section.key === 'week' ? weekDays : dates.sort()
+      section.changes = keys.map(key => ({ field: section.key === 'week' ? ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][+key] || key : key,
+        before: scheduleValue(current, current[section.key]?.[key]), after: scheduleValue(incoming, incoming[section.key]?.[key]) }))
+    } else if (section.key === 'exWeights') {
+      section.changes = weights.flatMap(id => fieldChanges(current.exWeights?.[id], incoming.exWeights?.[id], exerciseNames[id] || id, exerciseNames))
+    } else {
+      section.changes = fieldChanges(current[section.key], incoming[section.key], section.label, exerciseNames)
+      if (section.changed && !section.count) section.summary = 'Order changed'
+    }
+  }
   return { sections: sections.filter(s => s.changed), changed: sections.some(s => s.changed) }
 }
 

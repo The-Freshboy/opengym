@@ -15,6 +15,7 @@ import { DEMO } from '../lib/demo.js'
 import { MOBILE } from '../lib/mobile.js'
 import { missedSessions } from '../lib/activities.js'
 import { api } from '../lib/api.js'
+import NextDayCheckIn from '../components/NextDayCheckIn.jsx'
 
 // A job in flight or a proposal waiting is the only reason the Coach interrupts Home. When it
 // has nothing to say it renders nothing at all — and it only polls while Home is on screen.
@@ -135,6 +136,7 @@ export default function Home() {
       </div>
     </div>
 
+    <NextDayCheckIn />
     {coachOn && <CoachCard nav={nav} />}
 
     <div className="card">

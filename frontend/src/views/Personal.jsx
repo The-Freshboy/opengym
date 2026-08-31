@@ -4,8 +4,9 @@ import { useStore } from '../store/useStore.js'
 import { useUI } from '../store/useUI.js'
 import { Button } from '../components/ui.jsx'
 import Icon from '../components/Icon.jsx'
+import WeeklyDashboard from '../components/WeeklyDashboard.jsx'
 import { todayISO } from '../lib/format.js'
-import { GOAL_TEMPLATES, goalResults, goalReached, validateResult, weeklySummary } from '../lib/personal.js'
+import { GOAL_TEMPLATES, goalResults, goalReached, validateResult } from '../lib/personal.js'
 
 const resultLabel = (g, r) => !r ? 'Not tested' : g.kind === 'beep' ? `Level ${r.value}, shuttle ${r.shuttle}` : `${r.value} ${g.unit}`
 function GoalCard({ goal }) {
@@ -51,10 +52,10 @@ function GoalCard({ goal }) {
 export default function Personal() {
   const nav = useNavigate(); const { S, update, config, user } = useStore()
   const [custom, setCustom] = useState({ name: '', target: '', unit: 'kg' })
-  const goals = S.goals || [], sum = weeklySummary(S, todayISO())
+  const goals = S.goals || []
   const add = template => update(s => { s.goals ||= []; s.goals.push({ ...template, id: crypto.randomUUID() }) })
   return <div className="narrow personal-page"><div className="hdr"><div><h1>Your training</h1><p className="sub">Goals, weekly progress and decisions</p></div><button className="iconbtn" aria-label="Back home" onClick={() => nav('/home')}><Icon name="chevronLeft" /></button></div>
-    <section className="card"><h2>This week · {sum.from}</h2><div className="personal-metrics"><span><strong>{sum.sessions}</strong> sessions logged</span><span><strong>{sum.climbing}</strong> climbing</span><span><strong>{sum.loggedResults}</strong> test results</span><span><strong>{sum.rated}</strong> sessions rated</span></div><p className="small dim">Counts describe logged activity, not fitness or recovery. No result is inferred from treadmill running or default weights.</p><Button onClick={() => nav('/insights')}>Training insights</Button></section>
+    <WeeklyDashboard state={S} today={todayISO()} onInsights={() => nav('/insights')} />
     <section className="card"><h2>Share with your physio</h2><p className="small dim">A date-range PDF of your logged workouts, with optional notes, joint feedback and a separately labelled current plan.</p><Button onClick={() => nav('/personal/export')}>Export workouts to PDF</Button></section>
     <section className="card"><h2>Hang interval timer</h2><p className="small dim">Large countdown, adjustable hang/rest intervals and saved presets. No automatic workout logging.</p><Button onClick={() => nav('/personal/timer')}>Open hang timer</Button></section>
     {goals.filter(g => !g.archived).map(g => <GoalCard key={g.id} goal={g} />)}

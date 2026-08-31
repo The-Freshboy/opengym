@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useStore } from '../store/useStore.js'
 import { useUI } from '../store/useUI.js'
 import { exOr, cardioHasSpeed } from '../lib/exercises.js'
-import { effectiveRoutine, lastEntryFor, bestWeightFor, buildSets, defaultConfig, setsDoneActive, supersetUnits, unitOf, setLabel, modeOf, EFFORT, effortOf, stepEffort, capEffort, cleanupSg } from '../lib/history.js'
+import { effectiveRoutine, bestWeightFor, buildSets, defaultConfig, setsDoneActive, supersetUnits, unitOf, setLabel, modeOf, EFFORT, effortOf, stepEffort, capEffort, cleanupSg } from '../lib/history.js'
 import { fmtNum, fmtDate, todayISO, exCount, DAYN } from '../lib/format.js'
 import { beep, vibrate } from '../lib/sound.js'
 import { t } from '../lib/i18n.js'
@@ -15,7 +15,9 @@ import { Button, Check, NumberField, TextArea } from '../components/ui.jsx'
 import { nextPrescription, applyPrescription } from '../lib/progression.js'
 import { glyphOf } from '../lib/glyphs.js'
 import YouTubeDemo from '../components/YouTubeDemo.jsx'
-import { RecentExerciseHistory, ProgressionApproval, HangContext } from '../components/PersonalTraining.jsx'
+import { RecentExerciseHistory, ProgressionApproval } from '../components/PersonalTraining.jsx'
+import { LastTime, HoldLoggingContext } from '../components/WorkoutReference.jsx'
+import { repeatLastSessionPlan, applyRepeatedSets } from '../lib/workout-reuse.js'
 import { preparePersonalEntry } from '../lib/personal.js'
 
 /* ---------- start chooser (no active workout) ---------- */
@@ -68,7 +70,6 @@ function ExerciseBlock({ entryIdx, compact, editing, onToggle, onField, onAddSet
   const cardio = mode === 'cardio'
   const speed = cardioHasSpeed(entry.id)
   const timed = mode === 'time'
-  const last = lastEntryFor(S, entry.id)
   // The same number the "confirm your working weight" sheet calls your best, so the two
   // never disagree inside one session: heaviest logged set, or the working weight you kept.
   const best = cardio ? 0 : Math.max(bestWeightFor(S, entry.id), (S.exWeights[entry.id] || {}).w || 0)
@@ -118,9 +119,10 @@ function ExerciseBlock({ entryIdx, compact, editing, onToggle, onField, onAddSet
       {best > 0 && <span className="tag nocap">{t('Best:')} {fmtNum(best)} {S.unit}</span>}
     </div>
     {entry.target?.mandatory && <span className="tag acc">Mandatory base exercise</span>}
+    <LastTime entryIdx={entryIdx} />
     <RecentExerciseHistory id={entry.id} excludeId={S.active.editingWorkoutId} />
     {entry.target?.repsConvention && <p className="small dim">Repetitions: {entry.target.repsConvention === 'per-side' ? 'enter reps for each side' : entry.target.repsConvention === 'total-both-sides' ? 'enter the total across both sides' : entry.target.repsConvention}. No counts are automatically converted.</p>}
-    {timed && <HangContext entryIdx={entryIdx} />}
+    {timed && <HoldLoggingContext entryIdx={entryIdx} />}
     {!editing && <ProgressionApproval entryIdx={entryIdx} />}
     {plan && plan.why && plan.kind !== 'off' && <div className={'progline' + (plan.kind === 'deload' ? ' warn' : '')}>
       <Icon name={plan.kind === 'up' ? 'arrowUp' : plan.kind === 'deload' ? 'arrowDown' : 'lightbulb'} />
@@ -166,6 +168,8 @@ function ActiveWorkout() {
 
   const total = A.entries.reduce((n, e) => n + e.sets.length, 0)
   const done = setsDoneActive(A)
+  const repeatPlan = repeatLastSessionPlan(S)
+  const workTimer = useUI(s => s.work)
 
   const mutEntry = (idx, fn) => update(s => { fn(s.active.entries[idx]) }, true)
   // Clearing an optional field drops the key rather than storing null, so a set only carries
@@ -284,6 +288,14 @@ function ActiveWorkout() {
     {!editing && <div className="wprog"><i style={{ width: (total ? done / total * 100 : 0) + '%' }} /></div>}
     {A.trainingContext?.equipmentProfile && <p className="small dim">Equipment: {A.trainingContext.equipmentProfile.name}. This context does not substitute exercises or adjust loads.</p>}
     {A.trainingContext?.plannedMinutes && <p className="small dim">Planned time: {A.trainingContext.plannedMinutes} minutes — a preference, not a required duration.</p>}
+    {repeatPlan && <section className="card" aria-label="Repeat last session">
+      <Button icon="reset" disabled={done > 0 || !!workTimer || !repeatPlan.matches.length} onClick={() => update(s => {
+        if (s.active?.editingWorkoutId || setsDoneActive(s.active) > 0 || useUI.getState().work) return
+        const fresh = repeatLastSessionPlan(s)
+        fresh?.matches.forEach(({ index, sets }) => applyRepeatedSets(s.active.entries[index], sets))
+      })}>Repeat last session’s working sets</Button>
+      <p className="small dim">From {repeatPlan.workout.d}: {repeatPlan.matches.length} matching exercises{repeatPlan.skipped ? `; ${repeatPlan.skipped} left unchanged because their setup differs or history is missing` : ''}. Prefills numbers only, with no completed sets or effort copied. Your programme and warm-ups stay unchanged.{done > 0 ? ' Disabled because training has started.' : ''}</p>
+    </section>}
 
     {A.entries.length ? <>
       <div className="muted small" style={{ marginBottom: 6 }}>{isSuperset ? t('Superset {0} / {1}', unitIdx + 1, units.length) : t('Exercise {0} / {1}', unitIdx + 1, units.length)}</div>
@@ -300,7 +312,7 @@ function ActiveWorkout() {
         <ExerciseBlock entryIdx={cur} editing={editing} onToggle={i => toggle(cur, i)} onField={(i, f, v) => setField(cur, i, f, v)} onAddSet={() => addSet(cur)} onRemoveSet={() => removeSet(cur)} onStartTimed={i => startTimed(cur, i)} />
       )}
       <div style={{ height: 10 }} /><TextArea rows={2} maxLength={500} value={A.entries[cur]?.note || ''} onChange={e => update(s => { const en = s.active.entries[cur]; if (en) en.note = e.target.value })} placeholder={t('Exercise note (optional)')} />
-      <div className="row" style={{ gap: 8, marginTop: 8 }}><Button size="sm" icon="shuffle" disabled={!editing && A.entries[cur]?.target?.mandatory} onClick={() => replaceExercise(cur)}>{t('Replace exercise')}</Button>{lastEntryFor(S, A.entries[cur]?.id) && <Button size="sm" icon="reset" onClick={() => update(s => { const last = lastEntryFor(s, s.active.entries[cur].id); if (last) s.active.entries[cur].sets = last.sets.map(x => ({ ...x, done: editing })) })}>{t("Use last time's sets")}</Button>}</div>
+      <div className="row" style={{ gap: 8, marginTop: 8 }}><Button size="sm" icon="shuffle" disabled={!editing && A.entries[cur]?.target?.mandatory} onClick={() => replaceExercise(cur)}>{t('Replace exercise')}</Button></div>
     </> : <div className="empty"><div className="ico"><Icon name="shuffle" /></div>{t('Freestyle workout — add your first exercise.')}</div>}
 
     <div style={{ height: 12 }} />

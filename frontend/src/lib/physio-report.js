@@ -56,6 +56,11 @@ export function preparePhysioReport(S, options, catalogue = []) {
       for (const key of ['tingling', 'numbness', 'weakness']) if (typeof w.feedback?.[key] === 'boolean') details.push(`${key}: ${w.feedback[key] ? 'yes' : 'no'}`)
       if (w.feedback?.symptomLocation) details.push(`Symptom location: ${clean(w.feedback.symptomLocation)}`)
       if (w.feedback?.symptomTiming) details.push(`Symptom timing: ${clean(w.feedback.symptomTiming)}`)
+      if (w.nextDayCheckIn?.status === 'recorded') {
+        details.push(`Next-day check-in (${clean(w.nextDayCheckIn.date)}): ${clean(w.nextDayCheckIn.change)} compared with usual baseline`)
+        for (const key of ['jointDiscomfort', 'tingling', 'numbness', 'weakness']) if (typeof w.nextDayCheckIn[key] === 'boolean') details.push(`Next day ${key}: ${w.nextDayCheckIn[key] ? 'yes' : 'no'}`)
+        if (notes && w.nextDayCheckIn.note) details.push(`Next-day notes: ${clean(w.nextDayCheckIn.note)}`)
+      }
       if (Number.isFinite(w.sessionRpe)) details.push(`Session effort: ${w.sessionRpe}/10`)
     }
     if (notes && w.note) details.push(`Session note: ${clean(w.note)}`)

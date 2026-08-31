@@ -4,6 +4,15 @@ import { readFileSync } from 'node:fs'
 const state = { unit: 'kg', customEx: [{ id: 'hang', n: 'Straight-bar hold' }], routines: [{ name: 'Base', ex: [{ id: 'hang', mode: 'time', sets: 2, sec: 10, mandatory: true }] }], workouts: [{ id: 'w1', d: '2026-08-28', name: 'Upper', unit: 'kg', note: 'PRIVATE SESSION', feedback: { energy: 2, jointDiscomfort: true }, entries: [{ id: 'hang', target: { mode: 'time', sets: 2, sec: 10 }, note: 'PRIVATE EXERCISE', sets: [{ sec: 12, w: 0, done: true, rir: 2 }, { sec: 999, done: false }] }] }], coachIntake: { medication: 'NEVER EXPORT' }, bodyweight: [{ v: 112 }], goals: [{ id: 'g', name: 'Beep', kind: 'beep' }], goalResults: [{ d: '2026-08-28', goalId: 'g', value: 7, shuttle: 5, note: 'PRIVATE TEST' }] }
 const options = { from: '2026-08-01', to: '2026-08-30' }
 describe('physio report privacy and accuracy', () => {
+  it('shares next-day symptoms only with feedback consent and notes with both choices', () => {
+    const copy = structuredClone(state)
+    copy.workouts[0].nextDayCheckIn = { status: 'recorded', date: '2026-08-29', change: 'same', numbness: true, note: 'PRIVATE NEXT DAY' }
+    expect(JSON.stringify(preparePhysioReport(copy, options))).not.toContain('Next-day')
+    const feedbackOnly = JSON.stringify(preparePhysioReport(copy, { ...options, feedback: true }))
+    expect(feedbackOnly).toContain('Next day numbness: yes')
+    expect(feedbackOnly).not.toContain('PRIVATE NEXT DAY')
+    expect(JSON.stringify(preparePhysioReport(copy, { ...options, feedback: true, notes: true }))).toContain('PRIVATE NEXT DAY')
+  })
   it('only exports completed sets and does not change state', () => {
     const before = JSON.stringify(state), r = preparePhysioReport(state, options)
     expect(r.sessions[0].rows).toHaveLength(1)

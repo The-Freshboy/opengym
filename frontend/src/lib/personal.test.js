@@ -8,6 +8,11 @@ const routine = { id: 'r', name: 'A', ex: [cfg] }
 const state = (n = 3) => ({ unit: 'kg', routines: [structuredClone(routine)], week: {}, workouts: ['2026-08-20', '2026-08-23', '2026-08-27'].slice(0, n).map((d, i) => ({ id: 'w' + i, d, routineId: 'r', unit: 'kg', entries: [{ id: cfg.id, target: { ...cfg }, sets: [{ w: 20, r: 8, done: true, rir: 3 }, { w: 20, r: 8, done: true, rir: 2 }] }] })), exWeights: { '0001': { w: 100 } } })
 const prepare = s => preparePersonalEntry(s, cfg, routine, '2026-08-30')
 describe('personal progression approval', () => {
+  it('withholds progression after next-day symptoms', () => {
+    const s = state(); s.workouts[2].nextDayCheckIn = { status: 'recorded', numbness: true }
+    expect(prepare(s).proposal).toBeUndefined()
+    expect(prepare(s).plan.safety).toBe(true)
+  })
   it('compares three working-set exposures even when additional warm-ups are logged', () => {
     const s = state()
     s.workouts.forEach(w => w.entries[0].sets.unshift({ done: true, w: 10, r: 5, type: 'warmup' }))

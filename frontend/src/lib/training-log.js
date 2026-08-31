@@ -16,7 +16,7 @@ export function duplicateKnownHistory(workout, date, today, id, confirmed) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !Number.isFinite(Date.parse(date + 'T12:00:00Z')) || new Date(date + 'T12:00:00Z').toISOString().slice(0, 10) !== date || date > today) throw new Error('Choose a valid past or current date, not a future workout.')
   const copy = JSON.parse(JSON.stringify(workout))
   const duration = Math.max(60000, (workout.end || 0) - (workout.start || 0)), start = new Date(date + 'T12:00:00').getTime()
-  for (const key of ['feedback', 'rating', 'sessionRpe', 'note']) delete copy[key]
+  for (const key of ['feedback', 'rating', 'sessionRpe', 'note', 'nextDayCheckIn']) delete copy[key]
   return { ...copy, id, d: date, start, end: start + duration, prs: [], copiedHistory: true, duplicatedFrom: workout.id }
 }
 export function editTrainingBlock(block, patch) {
