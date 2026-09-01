@@ -4,7 +4,7 @@ services:
   # One-time: download the exercise images + GIFs into ./media (skipped if already there).
   # ~140 MB, from github.com/hasaneyldrm/exercises-dataset (CC).
   media:
-    image: alpine/git
+    image: alpine/git:2.49.1
     volumes:
       - ./media/img:/out/img
       - ./media/gif:/out/gif
@@ -13,7 +13,8 @@ services:
       - |
         if [ -z "$$(ls -A /out/img 2>/dev/null)" ]; then
           echo "↓ Downloading exercise media (~140 MB, one time)…"
-          git clone --depth 1 https://github.com/hasaneyldrm/exercises-dataset /tmp/ds
+          git clone https://github.com/hasaneyldrm/exercises-dataset /tmp/ds
+          git -C /tmp/ds checkout 7455efae41b330c265e7cd4b78dfa848e7ce5ebd
           cp /tmp/ds/images/*.jpg /out/img/ && cp /tmp/ds/videos/*.gif /out/gif/
           echo "✓ Exercise media ready ($$(ls /out/img | wc -l) images)."
         else
@@ -24,7 +25,7 @@ services:
   # Passkey auth + per-user data (Node, no framework).
   # image: prebuilt (docker compose pull). build: from source (docker compose up --build).
   api:
-    image: ghcr.io/duartesantos8/opengym-api:latest
+    image: ghcr.io/the-freshboy/opengym-api:${OPENGYM_TAG:-latest}
     build: ./api
     restart: unless-stopped
     env_file: .env
@@ -41,7 +42,7 @@ services:
   # Builds the React frontend (multi-stage) and serves it, proxying /api → api
   # and the exercise media from the shared volume. Single origin for passkeys.
   web:
-    image: ghcr.io/duartesantos8/opengym-web:latest
+    image: ghcr.io/the-freshboy/opengym-web:${OPENGYM_TAG:-latest}
     build:
       context: .
       dockerfile: web/Dockerfile
