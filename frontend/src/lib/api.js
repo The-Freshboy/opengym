@@ -51,6 +51,14 @@ export async function passkeyRegister(name, code) {
   const res = await api('/api/register/verify', { method: 'POST', body: JSON.stringify({ cid, credential: credToJSON(cred) }) })
   return res.user
 }
+export async function passkeyAdd(name) {
+  // Re-authenticate with an existing passkey before enrolling another one. A stolen long-lived
+  // session cookie alone must not be enough to add an attacker's credential to the account.
+  await passkeyLogin()
+  const { cid, options } = await api('/api/passkeys/options', { method: 'POST', body: JSON.stringify({ name }) })
+  const cred = await navigator.credentials.create({ publicKey: toCreationOptions(options) })
+  return api('/api/passkeys/verify', { method: 'POST', body: JSON.stringify({ cid, credential: credToJSON(cred) }) })
+}
 export async function passkeyLogin() {
   const { cid, options } = await api('/api/login/options', { method: 'POST', body: '{}' })
   const cred = await navigator.credentials.get({ publicKey: toRequestOptions(options) })

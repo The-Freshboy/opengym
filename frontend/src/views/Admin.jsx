@@ -124,6 +124,20 @@ function InvitesCard({ invites, reload }) {
   </div>
 }
 
+function AuditCard() {
+  const [events, setEvents] = useState([])
+  useEffect(() => { api('/api/admin/audit').then(d => setEvents(d.events)).catch(() => {}) }, [])
+  return <div className="card">
+    <h2 style={{ marginTop: 0 }}>Security activity</h2>
+    <div className="small muted" style={{ marginBottom: 8 }}>Recent account, passkey and session changes. No workout or Coach content is recorded.</div>
+    {events.slice(0, 25).map((e, i) => <div key={e.at + i} className="row between" style={{ padding: '7px 2px', borderBottom: '1px solid var(--sep)', gap: 12 }}>
+      <div className="small"><b>{e.actorName}</b> · {e.action}{e.targetName && e.targetName !== e.actorName ? ' · ' + e.targetName : ''}</div>
+      <span className="dim" style={{ fontSize: '.7rem', whiteSpace: 'nowrap' }}>{new Date(e.at).toLocaleString()}</span>
+    </div>)}
+    {!events.length && <div className="dim small">No security activity recorded yet.</div>}
+  </div>
+}
+
 export default function Admin() {
   const nav = useNavigate()
   const user = useStore(s => s.user)
@@ -171,6 +185,7 @@ export default function Admin() {
     <AdminCoach />
 
     <InvitesCard invites={invites} reload={loadInvites} />
+    <AuditCard />
 
     <h4 className="sec">Users</h4>
     <div className="list">

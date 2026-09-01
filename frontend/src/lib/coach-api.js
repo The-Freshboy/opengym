@@ -27,6 +27,7 @@ export const requestPlan = async intake => DEMO ? (await demo()).demoPlan(S(), i
 export const refinePlan = async text => DEMO ? (await demo()).demoRefine(S()) : api('/api/coach/plan', { method: 'POST', body: JSON.stringify({ refine: text }) })
 export const resolvePending = async body => DEMO ? (await demo()).demoResolve() : api('/api/coach/pending/resolve', { method: 'POST', body: JSON.stringify(body) })
 export const forgetCoach = async () => DEMO ? (await demo()).demoResolve() : api('/api/coach/forget', { method: 'POST', body: '{}' })
+export const cancelCoach = async () => DEMO ? (await demo()).demoResolve() : api('/api/coach/cancel', { method: 'POST', body: '{}' })
 export const disclosure = async () => DEMO ? (await demo()).demoDisclosure() : api('/api/coach/disclosure')
 
 /**

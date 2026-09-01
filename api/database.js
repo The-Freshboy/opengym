@@ -1,7 +1,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 
-export const emptyDatabase = () => ({ users: [], creds: [], subs: [], invites: [], ptProfiles: {} })
+export const emptyDatabase = () => ({ users: [], creds: [], subs: [], invites: [], audit: [], ptProfiles: {} })
 
 export function loadDatabase(file) {
   let raw
@@ -15,11 +15,11 @@ export function loadDatabase(file) {
   catch (error) { throw new Error('Account database is corrupt; startup stopped to protect existing data', { cause: error }) }
   if (!db || typeof db !== 'object' || Array.isArray(db) || !Array.isArray(db.users) || !Array.isArray(db.creds))
     throw new Error('Account database has an invalid structure; startup stopped to protect existing data')
-  for (const key of ['subs', 'invites']) if (db[key] !== undefined && !Array.isArray(db[key]))
+  for (const key of ['subs', 'invites', 'audit']) if (db[key] !== undefined && !Array.isArray(db[key]))
     throw new Error(`Account database has invalid ${key}; startup stopped to protect existing data`)
   if (db.ptProfiles !== undefined && (!db.ptProfiles || typeof db.ptProfiles !== 'object' || Array.isArray(db.ptProfiles)))
     throw new Error('Account database has invalid PT profiles; startup stopped to protect existing data')
-  return { ...db, subs: db.subs || [], invites: db.invites || [], ptProfiles: db.ptProfiles || {} }
+  return { ...db, subs: db.subs || [], invites: db.invites || [], audit: db.audit || [], ptProfiles: db.ptProfiles || {} }
 }
 
 export function saveDatabase(file, db) {

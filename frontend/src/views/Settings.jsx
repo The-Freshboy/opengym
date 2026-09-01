@@ -4,7 +4,7 @@ import { useStore, DEF, hasData } from '../store/useStore.js'
 import { useUI } from '../store/useUI.js'
 import { ACCENTS, todayISO, localTZ } from '../lib/format.js'
 import { effortOf } from '../lib/history.js'
-import { webauthnOK, passkeyLogin, passkeyRegister, IS_ANDROID } from '../lib/api.js'
+import { api, webauthnOK, passkeyAdd, passkeyLogin, passkeyRegister, IS_ANDROID } from '../lib/api.js'
 import { pushSupported, enablePush, disablePush, sendTestPush } from '../lib/push.js'
 import { wakeLockSupported } from '../lib/wakelock.js'
 import { t, LANGS, INSTR_LANGS } from '../lib/i18n.js'
@@ -64,6 +64,19 @@ export default function Settings() {
   const wakeOK = wakeLockSupported()
   const voiceOK = typeof window !== 'undefined' && 'speechSynthesis' in window
   const [hasPlanRecovery, setHasPlanRecovery] = useState(() => !!localStorage.getItem(PLAN_RECOVERY_KEY))
+  const [passkeys, setPasskeys] = useState([])
+  const loadPasskeys = () => user && api('/api/passkeys').then(d => setPasskeys(d.passkeys)).catch(() => {})
+  useEffect(() => { loadPasskeys() }, [user?.id])
+  const addPasskey = async () => {
+    const name = window.prompt('Name this passkey (for example, Phone or Laptop)')
+    if (!name?.trim()) return
+    try { await passkeyAdd(name.trim()); await loadPasskeys(); toast('Passkey added') } catch (e) { toast(e.message || 'Could not add passkey') }
+  }
+  const removePasskey = id => api('/api/passkeys/delete', { method: 'POST', body: JSON.stringify({ id }) })
+    .then(() => { loadPasskeys(); toast('Passkey removed') }).catch(e => toast(e.message))
+  const deleteAccount = () => api('/api/account/delete', { method: 'POST', body: '{}' }).then(() => {
+    setUser(null); replaceState(JSON.parse(JSON.stringify(DEF)), true); nav('/home'); toast('Account permanently deleted')
+  }).catch(e => toast(e.message))
 
   const doExport = async () => {
     const json = JSON.stringify(S, null, 2)
@@ -217,6 +230,14 @@ export default function Settings() {
     </Section>
     {!user && !DEMO && !MOBILE && <p className="sect-f" style={{ marginTop: -18, marginBottom: 22 }}>{t('Guest mode — data lives only in this browser.')}</p>}
 
+    {user && <Section title="Passkeys" footer="Keep at least two passkeys on different devices so you can recover access if one is lost.">
+      {passkeys.map((p, i) => <Row key={p.id} icon="key" iconTint="var(--blue)" title={p.name}
+        subtitle={p.created ? 'Added ' + new Date(p.created).toLocaleDateString() : (i ? 'Recovery passkey' : 'Primary passkey')}>
+        {passkeys.length > 1 && <button className="iconbtn" aria-label="Remove passkey" onClick={() => confirmSheet({ title: 'Remove this passkey?', message: 'That device will no longer be able to sign in with this passkey.', confirmText: 'Remove', danger: true, onConfirm: () => removePasskey(p.id) })}><Icon name="trash" /></button>}
+      </Row>)}
+      <Row icon="plus" iconTint="var(--green)" title="Add another passkey" subtitle="Confirm an existing passkey first, then add the new one" accessory="chevron" onClick={addPasskey} />
+    </Section>}
+
     {/* ---------- general ---------- */}
     <Section title={t('General')} footer={t('Note: switching units only changes the label — logged numbers are not converted.')}>
       <SelectRow
@@ -343,6 +364,7 @@ export default function Settings() {
       {/* Also drops anything the Coach is holding server-side: a wipe that leaves a pending
           proposal on the server behind would be a wipe in name only. */}
       <Row icon="trash" iconTint="var(--red)" title={t('Reset everything')} danger onClick={() => confirmSheet({ title: t('Reset everything?'), message: t('Deletes your plan, workouts and body weight on this device. This cannot be undone.'), confirmText: t('Delete everything'), danger: true, onConfirm: () => { if (user) forgetCoach().catch(() => {}); replaceState(JSON.parse(JSON.stringify(DEF)), true); nav('/home'); toast(t('All data reset')) } })} />
+      {user && !user.admin && <Row icon="person" iconTint="var(--red)" title="Delete account permanently" subtitle="Deletes passkeys, synced data, notifications and Coach data" danger onClick={() => confirmSheet({ title: 'Permanently delete your account?', message: 'Export a backup first if you want to keep anything. This cannot be undone.', confirmText: 'Delete account', danger: true, onConfirm: deleteAccount })} />}
     </Section>
     <input ref={fileRef} type="file" accept=".json,application/json" style={{ display: 'none' }} onChange={doImport} />
     <input ref={reviewRef} type="file" accept=".json,application/json" style={{ display: 'none' }} onChange={doReviewImport} />
