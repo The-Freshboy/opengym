@@ -11,7 +11,7 @@ import {
   canRevert, revertLast, changeTitle, recordDismissal
 } from '../lib/coach.js'
 import {
-  useCoachStatus, requestReview, resolvePending, forgetCoach, disclosure, JOB_ERRORS
+  useCoachStatus, requestReview, resolvePending, forgetCoach, cancelCoach, disclosure, JOB_ERRORS
 } from '../lib/coach-api.js'
 import { confirmSheet } from '../sheets.jsx'
 import Icon from '../components/Icon.jsx'
@@ -201,6 +201,7 @@ function ConsentCard({ onDone }) {
 /* ---------------------------------- status ---------------------------------- */
 
 function StatusCard({ job, pending, nav }) {
+  const toast = useUI(s => s.toast)
   if (job) return <div className="card">
     <div className="row" style={{ gap: 10 }}>
       <span className="lrow-i" style={{ background: 'var(--orange)' }}><Icon name="sparkles" /></span>
@@ -209,6 +210,7 @@ function StatusCard({ job, pending, nav }) {
         <div className="muted small">{t('This takes a minute or two. You can leave this screen — it keeps going.')}</div>
       </div>
     </div>
+    <Button style={{ marginTop: 12 }} onClick={() => cancelCoach().then(() => toast(t('Coach stopped'))).catch(e => toast(e.message))}>{t('Stop Coach')}</Button>
   </div>
 
   if (pending) return <div className="card" style={{ borderColor: 'var(--acc)' }}>

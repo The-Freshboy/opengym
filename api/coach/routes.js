@@ -94,6 +94,12 @@ export function coachRoutes({ json, readBody, readSession, requireAdmin }) {
       json(res, 200, { ok: true });
     },
 
+    'POST /api/coach/cancel': async (req, res) => {
+      const user = guard(req, res); if (!user) return;
+      jobs.clearUser(user.id);
+      json(res, 200, { ok: true });
+    },
+
     /* ------------------------------ admin ------------------------------ */
 
     'GET /api/admin/coach': async (req, res) => {

@@ -42,8 +42,11 @@ test('rate limiter is deterministic and bounded by its configured count', () => 
 
 test('server pins WebAuthn UV and minimal public health response', () => {
   const source = fs.readFileSync(new URL('../server.js', import.meta.url), 'utf8');
-  assert.equal((source.match(/userVerification: 'required'/g) || []).length, 2);
-  assert.equal((source.match(/requireUserVerification: true/g) || []).length, 2);
+  assert.equal((source.match(/userVerification: 'required'/g) || []).length, 3);
+  assert.equal((source.match(/requireUserVerification: true/g) || []).length, 3);
+  assert.match(source, /POST \/api\/passkeys\/delete/);
+  assert.match(source, /POST \/api\/account\/delete/);
+  assert.match(source, /GET \/api\/admin\/audit/);
   assert.match(source, /GET \/api\/health[^\n]+\{ ok: true \}/);
   assert.doesNotMatch(source, /GET \/api\/health[^\n]+users/);
 });

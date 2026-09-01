@@ -47,12 +47,17 @@ if (!fs.existsSync(secretFile)) fs.writeFileSync(secretFile, crypto.randomBytes(
 const SECRET = fs.readFileSync(secretFile, 'utf8').trim();
 
 const dbFile = path.join(DATA, 'db.json');
-let db = { users: [], creds: [], subs: [], invites: [] };
+let db = { users: [], creds: [], subs: [], invites: [], audit: [] };
 try { db = JSON.parse(fs.readFileSync(dbFile, 'utf8')); } catch {}
 db.subs = db.subs || [];
 db.invites = db.invites || [];
+db.audit = db.audit || [];
 const isAdmin = user => !!user && (user.admin === true || ADMIN_UIDS.includes(user.id));
 function saveDb() { atomicWrite(dbFile, JSON.stringify(db, null, 2)); }
+function audit(actor, action, target = null, detail = null) {
+  db.audit.push({ at: new Date().toISOString(), actor: actor?.id || null, action, target, ...(detail ? { detail } : {}) });
+  if (db.audit.length > 1000) db.audit = db.audit.slice(-1000);
+}
 function atomicWrite(file, content) {
   const tmp = file + '.tmp';
   fs.writeFileSync(tmp, content, { mode: 0o600 });
@@ -338,10 +343,12 @@ const routes = {
     db.users.push(user);
     db.creds.push({
       id: credential.id, userId: user.id,
+      name: 'Primary passkey', created: user.created,
       publicKey: Buffer.from(credential.publicKey).toString('base64url'),
       counter: credential.counter || 0,
       transports: body.credential?.response?.transports || []
     });
+    audit(user, 'account.created', user.id);
     saveDb();
     json(res, 200, { user: { id: user.id, name: user.name, admin: isAdmin(user) } }, { 'Set-Cookie': sessionCookie(user) });
   },
@@ -395,6 +402,83 @@ const routes = {
     const user = readSession(req);
     if (!user) return json(res, 401, { error: 'not signed in' });
     user.sv = sessionVersion(user) + 1;
+    audit(user, 'sessions.revoked', user.id);
+    saveDb();
+    json(res, 200, { ok: true }, { 'Set-Cookie': clearCookie });
+  },
+
+  'GET /api/passkeys': async (req, res) => {
+    const user = readSession(req);
+    if (!user) return json(res, 401, { error: 'not signed in' });
+    const passkeys = db.creds.filter(c => c.userId === user.id).map(c => ({
+      id: c.id, name: c.name || 'Passkey', created: c.created || null, transports: c.transports || []
+    }));
+    json(res, 200, { passkeys });
+  },
+
+  'POST /api/passkeys/options': async (req, res) => {
+    const user = readSession(req);
+    if (!user) return json(res, 401, { error: 'not signed in' });
+    const body = await readBody(req);
+    const name = String(body.name || '').trim().slice(0, 40) || 'Passkey';
+    const existing = db.creds.filter(c => c.userId === user.id);
+    const options = await generateRegistrationOptions({
+      rpName: RP_NAME, rpID: RP_ID,
+      userID: Buffer.from(user.id), userName: user.name, userDisplayName: user.name,
+      attestationType: 'none',
+      authenticatorSelection: { residentKey: 'required', userVerification: 'required' },
+      excludeCredentials: existing.map(c => ({ id: c.id, transports: c.transports || [] }))
+    });
+    const cid = putChallenge({ challenge: options.challenge, uid: user.id, passkeyName: name });
+    json(res, 200, { cid, options });
+  },
+
+  'POST /api/passkeys/verify': async (req, res) => {
+    const user = readSession(req);
+    if (!user) return json(res, 401, { error: 'not signed in' });
+    const body = await readBody(req);
+    const c = takeChallenge(body.cid);
+    if (!c || c.uid !== user.id || !c.passkeyName) return json(res, 400, { error: 'challenge expired — try again' });
+    let verification;
+    try {
+      verification = await verifyRegistrationResponse({ response: body.credential, expectedChallenge: c.challenge,
+        expectedOrigin: ORIGIN, expectedRPID: RP_ID, requireUserVerification: true });
+    } catch (e) { return json(res, 400, { error: 'verification failed: ' + e.message }); }
+    if (!verification.verified) return json(res, 400, { error: 'not verified' });
+    const { credential } = verification.registrationInfo;
+    if (db.creds.some(x => x.id === credential.id)) return json(res, 409, { error: 'credential already registered' });
+    db.creds.push({ id: credential.id, userId: user.id, name: c.passkeyName, created: new Date().toISOString(),
+      publicKey: Buffer.from(credential.publicKey).toString('base64url'), counter: credential.counter || 0,
+      transports: body.credential?.response?.transports || [] });
+    audit(user, 'passkey.added', user.id, c.passkeyName);
+    saveDb();
+    json(res, 200, { ok: true });
+  },
+
+  'POST /api/passkeys/delete': async (req, res) => {
+    const user = readSession(req);
+    if (!user) return json(res, 401, { error: 'not signed in' });
+    const body = await readBody(req);
+    const mine = db.creds.filter(c => c.userId === user.id);
+    if (mine.length <= 1) return json(res, 400, { error: 'add another passkey before removing this one' });
+    const cred = mine.find(c => c.id === body.id);
+    if (!cred) return json(res, 404, { error: 'passkey not found' });
+    db.creds = db.creds.filter(c => c !== cred);
+    audit(user, 'passkey.removed', user.id, cred.name || 'Passkey');
+    saveDb();
+    json(res, 200, { ok: true });
+  },
+
+  'POST /api/account/delete': async (req, res) => {
+    const user = readSession(req);
+    if (!user) return json(res, 401, { error: 'not signed in' });
+    if (isAdmin(user)) return json(res, 400, { error: 'an admin account cannot delete itself' });
+    try { fs.unlinkSync(stateFile(user.id)); } catch (e) { if (e.code !== 'ENOENT') throw e; }
+    presence.delete(user.id); cancelRestTimer(user.id); coachJobs.clearUser(user.id);
+    db.creds = db.creds.filter(c => c.userId !== user.id);
+    db.subs = db.subs.filter(s => s.userId !== user.id);
+    db.users = db.users.filter(u => u.id !== user.id);
+    audit(user, 'account.deleted', user.id);
     saveDb();
     json(res, 200, { ok: true }, { 'Set-Cookie': clearCookie });
   },
@@ -521,7 +605,7 @@ const routes = {
   },
 
   'POST /api/admin/user/disable': async (req, res) => {
-    if (!requireAdmin(req, res)) return;
+    const admin = requireAdmin(req, res); if (!admin) return;
     const body = await readBody(req);
     const u = db.users.find(x => x.id === body.id);
     if (!u) return json(res, 404, { error: 'no such user' });
@@ -532,6 +616,7 @@ const routes = {
       cancelRestTimer(u.id);
       coachJobs.clearUser(u.id);
     }
+    audit(admin, u.disabled ? 'account.disabled' : 'account.enabled', u.id);
     saveDb();
     json(res, 200, { ok: true, id: u.id, disabled: u.disabled });
   },
@@ -556,19 +641,28 @@ const routes = {
     do { code = crypto.randomBytes(8).toString('hex').toUpperCase(); } while (db.invites.some(i => i.code === code));
     const invite = { code, note: String(body.note || '').slice(0, 60), createdBy: admin.id, created: new Date().toISOString() };
     db.invites.push(invite);
+    audit(admin, 'invite.created', null);
     saveDb();
     json(res, 200, { invite });
   },
 
   'POST /api/admin/invites/revoke': async (req, res) => {
-    if (!requireAdmin(req, res)) return;
+    const admin = requireAdmin(req, res); if (!admin) return;
     const body = await readBody(req);
     const inv = db.invites.find(i => i.code === String(body.code || '').toUpperCase());
     if (!inv) return json(res, 404, { error: 'no such code' });
     if (inv.usedBy) return json(res, 400, { error: 'already used — cannot revoke' });
     db.invites = db.invites.filter(i => i.code !== inv.code);
+    audit(admin, 'invite.revoked', null);
     saveDb();
     json(res, 200, { ok: true });
+  },
+
+  'GET /api/admin/audit': async (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    const users = new Map(db.users.map(u => [u.id, u.name]));
+    json(res, 200, { events: db.audit.slice(-200).reverse().map(e => ({ ...e,
+      actorName: users.get(e.actor) || e.actor || 'system', targetName: users.get(e.target) || e.target || null })) });
   },
 
   /* ---------- AI Coach ---------- */
