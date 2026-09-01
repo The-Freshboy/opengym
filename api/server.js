@@ -19,6 +19,7 @@ import { createPersonalNotifier } from './personal-notifications.js';
 import { integrationRoutes } from './integrations.js';
 import { browserWriteError, stateInputError, clientAddress } from './request-guards.js';
 import { validPushEndpoint, pushAgent } from './push-transport.js';
+import { loadDatabase, saveDatabase } from './database.js';
 
 const PORT = +(process.env.PORT || 3000);
 const DATA = process.env.DATA_DIR || '/data';
@@ -37,6 +38,7 @@ const SESSION_DAYS = Math.max(1, +(process.env.SESSION_DAYS || 90) || 90);
 const MAX_BODY = 5 * 1024 * 1024;
 const INTEGRATIONS_ENABLED = /^(1|true|yes|on)$/i.test(process.env.INTEGRATIONS_ENABLED || '');
 const TRUST_PROXY = /^(1|true|yes|on)$/i.test(process.env.TRUST_PROXY || '');
+const REQUIRE_USER_VERIFICATION = !/^(0|false|no|off)$/i.test(process.env.REQUIRE_USER_VERIFICATION || '');
 // Secure cookies require HTTPS; over plain http://localhost the flag would drop the cookie
 const SECURE = /^https:/i.test(ORIGIN) ? ' Secure;' : '';
 
@@ -53,18 +55,9 @@ if (!fs.existsSync(secretFile)) fs.writeFileSync(secretFile, crypto.randomBytes(
 const SECRET = fs.readFileSync(secretFile, 'utf8').trim();
 
 const dbFile = path.join(DATA, 'db.json');
-let db = { users: [], creds: [], subs: [], invites: [] };
-try { db = JSON.parse(fs.readFileSync(dbFile, 'utf8')); } catch {}
-db.subs = db.subs || [];
-db.invites = db.invites || [];
-db.ptProfiles = db.ptProfiles || {};
+const db = loadDatabase(dbFile);
 const isAdmin = user => !!user && (user.admin === true || ADMIN_UIDS.includes(user.id));
-function saveDb() { atomicWrite(dbFile, JSON.stringify(db, null, 2)); }
-function atomicWrite(file, content) {
-  const tmp = file + '.tmp';
-  fs.writeFileSync(tmp, content);
-  fs.renameSync(tmp, file);
-}
+function saveDb() { saveDatabase(dbFile, db); }
 const stateStore = createStateStore(DATA);
 const stateFile = stateStore.file;
 const readState = uid => stateStore.read(uid).state;
@@ -334,7 +327,7 @@ const routes = {
       rpName: RP_NAME, rpID: RP_ID,
       userID: Buffer.from(uid), userName: name, userDisplayName: name,
       attestationType: 'none',
-      authenticatorSelection: { residentKey: 'required', userVerification: 'preferred' },
+      authenticatorSelection: { residentKey: 'required', userVerification: REQUIRE_USER_VERIFICATION ? 'required' : 'preferred' },
       excludeCredentials: []
     });
     const cid = putChallenge({ challenge: options.challenge, name, uid, code });
@@ -352,7 +345,7 @@ const routes = {
         expectedChallenge: c.challenge,
         expectedOrigin: ORIGIN,
         expectedRPID: RP_ID,
-        requireUserVerification: false
+        requireUserVerification: REQUIRE_USER_VERIFICATION
       });
     } catch (e) { return json(res, 400, { error: 'verification failed: ' + e.message }); }
     if (!verification.verified) return json(res, 400, { error: 'not verified' });
@@ -379,7 +372,7 @@ const routes = {
 
   'POST /api/login/options': async (req, res) => {
     const options = await generateAuthenticationOptions({
-      rpID: RP_ID, userVerification: 'preferred', allowCredentials: []
+      rpID: RP_ID, userVerification: REQUIRE_USER_VERIFICATION ? 'required' : 'preferred', allowCredentials: []
     });
     const cid = putChallenge({ challenge: options.challenge });
     json(res, 200, { cid, options });
@@ -398,7 +391,7 @@ const routes = {
         expectedChallenge: c.challenge,
         expectedOrigin: ORIGIN,
         expectedRPID: RP_ID,
-        requireUserVerification: false,
+        requireUserVerification: REQUIRE_USER_VERIFICATION,
         credential: {
           id: cred.id,
           publicKey: b64uToBuf(cred.publicKey),
@@ -655,8 +648,7 @@ const routes = {
     const admin = requireAdmin(req, res); if (!admin) return;
     const body = await readBody(req);
     let code;
-    // 16 hex chars = 64 bits, up from 8 chars / 32 bits. The app has no rate limiting by design
-    // (that's the reverse proxy's job) and /api/register/options tells a caller whether a code is
+    // 16 hex chars = 64 bits, up from 8 chars / 32 bits. /api/register/options tells a caller whether a code is
     // good, so the code itself has to be the thing that isn't worth guessing. Codes already in
     // db.json keep working — validation is an exact string compare, never a length or format check.
     do { code = crypto.randomBytes(8).toString('hex').toUpperCase(); } while (db.invites.some(i => i.code === code));

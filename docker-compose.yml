@@ -32,6 +32,8 @@ services:
       context: .
       dockerfile: web/Dockerfile
     restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
     depends_on:
       api:
         condition: service_healthy

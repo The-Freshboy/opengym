@@ -167,6 +167,8 @@ All via `.env` (see `.env.example`):
 | `RP_NAME`     | Name shown in the passkey prompt                     | `openGym`               |
 | `ADMIN_UIDS`  | User ids that get the admin dashboard (comma-separated) | *(none)*             |
 | `INVITE_ONLY` | Require an invite code to create a profile           | *(off)*                 |
+| `REQUIRE_USER_VERIFICATION` | Require biometric/PIN verification for passkeys | `true`          |
+| `TRUST_PROXY` | Trust client forwarding headers from restricted ingress | `false`           |
 | `COACH_DISABLED` | Force the AI Coach off, whatever the admin dashboard says | *(unset)*        |
 
 Push notification keys are generated on first run and saved to `./data/vapid.json` — nothing to set.
