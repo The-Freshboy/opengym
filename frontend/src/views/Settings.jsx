@@ -62,6 +62,7 @@ export default function Settings() {
   const reviewRef = useRef(null)
   const importRef = useRef(null)
   const wakeOK = wakeLockSupported()
+  const voiceOK = typeof window !== 'undefined' && 'speechSynthesis' in window
   const [hasPlanRecovery, setHasPlanRecovery] = useState(() => !!localStorage.getItem(PLAN_RECOVERY_KEY))
 
   const doExport = async () => {
@@ -252,6 +253,12 @@ export default function Settings() {
       </Row>
       <Row icon="bolt" iconTint="var(--teal)" title={t('Haptic feedback')} subtitle={t('Vibrate for completed sets and timers.')}>
         <Switch checked={S.haptics !== false} onChange={v => update(s => { s.haptics = v })} />
+      </Row>
+      <Row icon="person" iconTint="var(--blue)" title="Accessible workout controls" subtitle="Larger text, stronger contrast and larger workout buttons.">
+        <Switch checked={!!S.accessibility?.workoutMode} onChange={v => update(s => { s.accessibility = { ...s.accessibility, workoutMode: v } })} />
+      </Row>
+      <Row icon="bell" iconTint="var(--purple)" title="Voice workout cues" subtitle="Announces the current exercise and rest completion using on-device speech.">
+        <Switch checked={!!S.accessibility?.voiceCues && voiceOK} disabled={!voiceOK} onChange={v => update(s => { s.accessibility = { ...s.accessibility, voiceCues: v } })} />
       </Row>
       {/* Two names for the same judgement, so the column asks in the scale you already think in.
           The (i) sits before the control — you read it on the way to the choice, not after it. */}

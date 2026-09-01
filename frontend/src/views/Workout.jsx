@@ -22,6 +22,7 @@ import { preparePersonalEntry } from '../lib/personal.js'
 import SessionTools from '../components/SessionTools.jsx'
 import SyncConfidence from '../components/SyncConfidence.jsx'
 import { exerciseRest, deferExercise } from '../lib/session-tools.js'
+import { applyApprovedSubstitution } from '../lib/workout-tools.js'
 
 /* ---------- start chooser (no active workout) ---------- */
 function StartChooser() {
@@ -64,7 +65,7 @@ function Elapsed({ start }) {
 }
 
 /* ---------- one exercise block (reps: weight×reps · time: a held duration · cardio: duration+speed) ---------- */
-function ExerciseBlock({ entryIdx, compact, editing, onToggle, onField, onAddSet, onRemoveSet, onStartTimed }) {
+function ExerciseBlock({ entryIdx, compact, editing, onToggle, onField, onAddSet, onRemoveSet, onStartTimed, onSubstitute }) {
   const S = useStore(s => s.S)
   const working = useUI(s => s.work)
   const entry = S.active.entries[entryIdx]
@@ -127,7 +128,7 @@ function ExerciseBlock({ entryIdx, compact, editing, onToggle, onField, onAddSet
     {entry.target?.repsConvention && <p className="small dim">Repetitions: {entry.target.repsConvention === 'per-side' ? 'enter reps for each side' : entry.target.repsConvention === 'total-both-sides' ? 'enter the total across both sides' : entry.target.repsConvention}. No counts are automatically converted.</p>}
     {timed && <HoldLoggingContext entryIdx={entryIdx} />}
     {!editing && <ProgressionApproval entryIdx={entryIdx} />}
-    {!editing && <SessionTools key={`${S.active.id}-${entryIdx}-${entry.id}`} index={entryIdx} />}
+    {!editing && <SessionTools key={`${S.active.id}-${entryIdx}-${entry.id}`} index={entryIdx} onSubstitute={id => onSubstitute(id)} />}
     {plan && plan.why && plan.kind !== 'off' && <div className={'progline' + (plan.kind === 'deload' ? ' warn' : '')}>
       <Icon name={plan.kind === 'up' ? 'arrowUp' : plan.kind === 'deload' ? 'arrowDown' : 'lightbulb'} />
       <span>{t(...plan.why)}</span>
@@ -174,6 +175,11 @@ function ActiveWorkout() {
   const done = setsDoneActive(A)
   const repeatPlan = repeatLastSessionPlan(S)
   const workTimer = useUI(s => s.work)
+  useEffect(() => {
+    if (editing || !S.accessibility?.voiceCues || !A.entries[cur] || typeof window === 'undefined' || !('speechSynthesis' in window)) return
+    if (typeof SpeechSynthesisUtterance === 'undefined') return
+    speechSynthesis.cancel(); speechSynthesis.speak(new SpeechSynthesisUtterance(`Exercise ${unitIdx + 1} of ${units.length}. ${exOr(A.entries[cur].id).n}.`))
+  }, [cur, A.id, editing, S.accessibility?.voiceCues])
 
   const mutEntry = (idx, fn) => update(s => { fn(s.active.entries[idx]) }, true)
   // Clearing an optional field drops the key rather than storing null, so a set only carries
@@ -197,6 +203,13 @@ function ActiveWorkout() {
     cleanupSg(s.active.entries)
     s.active.cur = Math.min(s.active.cur, Math.max(0, s.active.entries.length - 1))
   }, true)
+  const substituteApproved = (idx, newId) => update(s => {
+    if (useUI.getState().work || useUI.getState().timer) return
+    applyApprovedSubstitution(s.active, idx, newId, id => {
+      const cfg = defaultConfig(id)
+      return { id, target: cfg, sets: buildSets(s, { id, ...cfg }) }
+    })
+  })
   const replaceExercise = idx => {
     if (A.entries[idx]?.target?.mandatory && !editing) return useUI.getState().toast('This is a mandatory exercise. You can finish early if needed; review the plan before substituting it.')
     const oldId = A.entries[idx]?.id
@@ -310,11 +323,11 @@ function ActiveWorkout() {
           {unit.map((idx, k) => <div key={idx} className="ss-ex">
             {k > 0 && <div className="ss-amp">+</div>}
             <ExerciseBlock entryIdx={idx} compact editing={editing}
-              onToggle={i => toggle(idx, i)} onField={(i, f, v) => setField(idx, i, f, v)} onAddSet={() => addSet(idx)} onRemoveSet={() => removeSet(idx)} onStartTimed={i => startTimed(idx, i)} />
+              onToggle={i => toggle(idx, i)} onField={(i, f, v) => setField(idx, i, f, v)} onAddSet={() => addSet(idx)} onRemoveSet={() => removeSet(idx)} onStartTimed={i => startTimed(idx, i)} onSubstitute={id => substituteApproved(idx, id)} />
           </div>)}
         </div>
       ) : (
-        <ExerciseBlock entryIdx={cur} editing={editing} onToggle={i => toggle(cur, i)} onField={(i, f, v) => setField(cur, i, f, v)} onAddSet={() => addSet(cur)} onRemoveSet={() => removeSet(cur)} onStartTimed={i => startTimed(cur, i)} />
+        <ExerciseBlock entryIdx={cur} editing={editing} onToggle={i => toggle(cur, i)} onField={(i, f, v) => setField(cur, i, f, v)} onAddSet={() => addSet(cur)} onRemoveSet={() => removeSet(cur)} onStartTimed={i => startTimed(cur, i)} onSubstitute={id => substituteApproved(cur, id)} />
       )}
       <div style={{ height: 10 }} /><TextArea rows={2} maxLength={500} value={A.entries[cur]?.note || ''} onChange={e => update(s => { const en = s.active.entries[cur]; if (en) en.note = e.target.value })} placeholder={t('Exercise note (optional)')} />
       <div className="row" style={{ gap: 8, marginTop: 8 }}><Button size="sm" icon="shuffle" disabled={!editing && A.entries[cur]?.target?.mandatory} onClick={() => replaceExercise(cur)}>{t('Replace exercise')}</Button></div>

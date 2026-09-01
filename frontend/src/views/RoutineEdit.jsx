@@ -64,7 +64,7 @@ export default function RoutineEdit() {
       return <div key={i}>
         {unitFirst.has(i) && <div className="ss-label"><Icon name="link" />{t('Superset')}</div>}
         <div className={'item' + (inSS.has(i) ? ' in-ss' : '')} onClick={() => {
-          exConfigSheet(ex, e, cfg => edit(x => { x[i] = { id: x[i].id, sg: x[i].sg, mandatory: x[i].mandatory, optional: x[i].optional, ...cfg } }), e.mandatory ? null : () => edit(x => { x.splice(i, 1); cleanupSg(x) }), r)
+          exConfigSheet(ex, e, cfg => edit(x => { x[i] = { id: x[i].id, sg: x[i].sg, mandatory: x[i].mandatory, optional: x[i].optional, substitutes: x[i].substitutes, ...cfg } }), e.mandatory ? null : () => edit(x => { x.splice(i, 1); cleanupSg(x) }), r)
         }}>
           <Thumb ex={ex} />
           <div className="grow"><div className="tt capitalize">{ex.n}</div><div className="ss">{exLine(e, S.unit)}</div>{e.mandatory && <span className="tag acc">Mandatory</span>}{e.optional && !e.mandatory && <span className="tag">Optional in short sessions</span>}</div>
@@ -80,6 +80,11 @@ export default function RoutineEdit() {
           <label className="small"><input type="checkbox" checked={!!e.mandatory} onChange={ev => { const checked = ev.target.checked; if (!checked && !window.confirm('Remove mandatory protection? This permits future removal or substitution.')) return; edit(x => { x[i].mandatory = checked; if (checked) x[i].optional = false }) }} /> Mandatory base exercise</label>
           <label className="small"><input type="checkbox" disabled={!!e.mandatory} checked={!!e.optional && !e.mandatory} onChange={ev => edit(x => { x[i].optional = ev.target.checked })} /> Optional in short sessions</label>
         </div>
+        {!e.mandatory && <details style={{ padding: '0 12px 10px' }}><summary className="small">Approved alternatives ({e.substitutes?.length || 0})</summary>
+          <p className="small dim">These may be selected for one session when equipment is unavailable. They never replace the routine automatically or copy weight.</p>
+          {(e.substitutes || []).map(id => <div className="row between" key={id}><span className="small capitalize">{exOr(id).n} · {exOr(id).eq || 'equipment unspecified'}</span><button className="btn sm" onClick={() => edit(x => { x[i].substitutes = (x[i].substitutes || []).filter(v => v !== id) })}>Remove</button></div>)}
+          <Button size="sm" disabled={(e.substitutes?.length || 0) >= 5} onClick={() => exercisePicker(chosen => edit(x => { if (chosen.id !== e.id && !(x[i].substitutes || []).includes(chosen.id)) x[i].substitutes = [...(x[i].substitutes || []), chosen.id].slice(0, 5) }))}>Add approved alternative</Button>
+        </details>}
       </div>
     })}</div> : <div className="empty"><div className="ico"><Icon name="dumbbell" /></div>{t('No exercises yet — add your first one.')}</div>}
 

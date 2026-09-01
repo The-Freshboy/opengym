@@ -24,7 +24,7 @@ export const DEF = {
   // same app it was before the feature existed, which is what Epic F asks for. Shape and
   // bounds live in lib/coach.js.
   coach: null,
-  goals: [], goalResults: [], personal: { weeklySummary: false }
+  goals: [], goalResults: [], personal: { weeklySummary: false }, accessibility: { workoutMode: false, voiceCues: false }
 }
 const clone = o => JSON.parse(JSON.stringify(o))
 

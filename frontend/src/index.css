@@ -122,6 +122,13 @@ body{
   touch-action:manipulation;
   font-variant-numeric:tabular-nums;
 }
+
+:root[data-workout-accessibility="on"] body{font-size:19px;letter-spacing:0}
+:root[data-workout-accessibility="on"] .small{font-size:15px}
+:root[data-workout-accessibility="on"] .dim,:root[data-workout-accessibility="on"] .muted{color:color-mix(in srgb,var(--label) 72%,transparent)}
+:root[data-workout-accessibility="on"] .btn,:root[data-workout-accessibility="on"] .iconbtn,:root[data-workout-accessibility="on"] .setgo{min-height:52px;min-width:52px}
+:root[data-workout-accessibility="on"] .setrow{min-height:62px}
+:root[data-workout-accessibility="on"] *:focus-visible{outline:3px solid var(--acc);outline-offset:3px}
 button{font:inherit;color:inherit;background:none;border:none;cursor:pointer;letter-spacing:inherit}
 input,select,textarea{font:inherit;color:var(--label);letter-spacing:inherit}
 img{max-width:100%}

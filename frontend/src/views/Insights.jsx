@@ -7,6 +7,7 @@ import { Button, Section, TextField } from '../components/ui.jsx'
 import Stepper from '../components/Stepper.jsx'
 import Icon from '../components/Icon.jsx'
 import { editTrainingBlock } from '../lib/training-log.js'
+import TrainingLoadView from '../components/TrainingLoadView.jsx'
 
 function BlockCard({ block, save }) {
   const [draft, setDraft] = useState({ ...block }), [error, setError] = useState('')
@@ -29,6 +30,7 @@ export default function Insights() {
     <p className="small dim">Session-effort load uses recorded duration × session effort: {x.ratedSessions} of {x.recent.length} recent sessions have both. No effort is assumed. Changes are shown only when both periods have complete coverage; this is not an injury-risk score.</p>
     <p className="small dim">Adherence uses retained programme snapshots where available. Older planning intent cannot be reconstructed; missing or copied logs are not proof of fitness.</p>
     <Section title="Climbing"><div className="card"><div className="row between"><div><b>{x.climbing.length} sessions in 28 days</b><div className="small dim">{x.bestGrade ? `Latest logged grade: ${x.bestGrade}` : 'Log attempts, sends and grades for richer trends.'}</div></div></div></div></Section>
+    <TrainingLoadView workouts={S.workouts} />
     {!!records.length && <Section title="Personal records">{records.map(r => <div className="card row between" key={r.type} style={{ marginBottom: 8 }}><div><b>{r.type}</b><div className="small dim">{r.date}</div></div><strong className="accent">{r.value}</strong></div>)}</Section>}
     <Section title="Training blocks">
       <label className="small"><input type="checkbox" checked={showArchived} onChange={e => setShowArchived(e.target.checked)} /> Show archived blocks</label>
