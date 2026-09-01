@@ -54,6 +54,11 @@ function patchUser(uid, patch) {
 }
 /** Consent revoked, profile deleted, "reset everything" — no server-side residue (FR-51). */
 export function clearUser(uid) {
+  for (let i = queue.length - 1; i >= 0; i--) if (queue[i].uid === uid) queue.splice(i, 1);
+  cancelled.add(uid);
+  controllers.get(uid)?.abort();
+  controllers.delete(uid);
+  inflight.delete(uid);
   try { fs.unlinkSync(userFile(uid)); } catch { /* nothing to clear */ }
 }
 
@@ -110,6 +115,8 @@ function archive(uid, rec, outcome) {
 const queue = [];
 let running = 0;
 const inflight = new Set();     // uids with a job queued or running (FR-07 single-flight)
+const controllers = new Map();
+const cancelled = new Set();
 
 class CoachError extends Error {
   constructor(code, message) { super(message); this.code = code; }
@@ -139,6 +146,7 @@ export function enqueue(uid, opts) {
   // twentieth ever finishes.
   bumpDaily(uid);
 
+  cancelled.delete(uid);
   const job = {
     id: crypto.randomBytes(8).toString('hex'),
     uid,
@@ -168,6 +176,7 @@ function pump() {
 }
 
 function finish(job, result) {
+  if (cancelled.has(job.uid)) return;
   const rec = readUser(job.uid);
   const history = [...(rec.history || []), {
     id: job.id, kind: job.kind, trigger: job.trigger, outcome: result.outcome,
@@ -216,6 +225,7 @@ export function buildPrompt(kind, payload, repair) {
 /* ---------- execution ---------- */
 
 async function execute(job) {
+  if (cancelled.has(job.uid)) return;
   patchUser(job.uid, { current: { id: job.id, kind: job.kind, state: 'running', startedAt: job.startedAt } });
 
   const S = readState(job.uid);
@@ -237,17 +247,20 @@ async function execute(job) {
 
   const jobDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coach-'));
   const env = cfgStore.jobEnv(jobDir);
+  const controller = new AbortController();
+  controllers.set(job.uid, controller);
   try {
     const ids = (await import('./adapters/spawn.js')).unprivilegedIds();
     if (ids) fs.chownSync(jobDir, ids.uid, ids.gid);
 
-    let attempt = await invoke(adapter, cfg, payload, jobDir, env, job, null);
+    let attempt = await invoke(adapter, cfg, payload, jobDir, env, job, null, controller.signal);
+    if (cancelled.has(job.uid)) return;
     if (!attempt.ok && attempt.repairable) {
       // One repair round, then done (FR-48). Two failures is a provider problem, not a
       // prompting problem, and a retry loop against a paid API is a bad way to find out.
       attempt = await invoke(adapter, cfg, payload, jobDir, env, job, {
         previous: attempt.raw, errors: attempt.errors
-      });
+      }, controller.signal);
     }
     if (!attempt.ok) {
       return finish(job, { outcome: 'failed', errorClass: attempt.errorClass, detail: attempt.detail });
@@ -281,20 +294,21 @@ async function execute(job) {
     };
     return finish(job, { outcome: 'ready', pending });
   } finally {
+    controllers.delete(job.uid);
     fs.rmSync(jobDir, { recursive: true, force: true });
   }
 }
 
-async function invoke(adapter, cfg, payload, jobDir, env, job, repair) {
+async function invoke(adapter, cfg, payload, jobDir, env, job, repair, signal) {
   const prompt = buildPrompt(job.kind, payload, repair);
-  const r = await adapter.invoke({ cfg, prompt, jobDir, env, model: cfg.model || null, timeoutMs: TIMEOUT_MS });
+  const r = await adapter.invoke({ cfg, prompt, jobDir, env, model: cfg.model || null, timeoutMs: TIMEOUT_MS, signal });
 
   if (r.timedOut) return { ok: false, errorClass: 'timeout' };
-  if (r.spawnError) return { ok: false, errorClass: 'missing', detail: r.stderr?.slice(0, 300) };
+  if (r.spawnError) return { ok: false, errorClass: 'missing' };
   if (r.code !== 0) {
     const err = (r.stderr || r.text || '').toLowerCase();
     const authish = /auth|unauthor|api key|credential|token|401|403|login/.test(err);
-    return { ok: false, errorClass: authish ? 'auth' : 'provider', detail: (r.stderr || r.text || '').slice(0, 300) };
+    return { ok: false, errorClass: authish ? 'auth' : 'provider' };
   }
 
   const parsed = extractJSON(r.text);

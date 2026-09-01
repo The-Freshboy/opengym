@@ -13,6 +13,7 @@ import * as coachConfig from './coach/config.js';
 import * as coachJobs from './coach/jobs.js';
 import { coachRoutes } from './coach/routes.js';
 import { startCadence } from './coach/cadence.js';
+import { createRateLimiter, jsonContentTypeAllowed, originAllowed, validPushSubscription } from './security.js';
 
 const PORT = +(process.env.PORT || 3000);
 const DATA = process.env.DATA_DIR || '/data';
@@ -29,6 +30,7 @@ const INVITE_ONLY = /^(1|true|yes|on)$/i.test(process.env.INVITE_ONLY || '');
 // baked into each cookie when it's issued, so lowering this never cuts an existing session short.
 const SESSION_DAYS = Math.max(1, +(process.env.SESSION_DAYS || 90) || 90);
 const MAX_BODY = 5 * 1024 * 1024;
+const MAX_CHALLENGES = 2000;
 // Secure cookies require HTTPS; over plain http://localhost the flag would drop the cookie
 const SECURE = /^https:/i.test(ORIGIN) ? ' Secure;' : '';
 
@@ -53,8 +55,9 @@ const isAdmin = user => !!user && (user.admin === true || ADMIN_UIDS.includes(us
 function saveDb() { atomicWrite(dbFile, JSON.stringify(db, null, 2)); }
 function atomicWrite(file, content) {
   const tmp = file + '.tmp';
-  fs.writeFileSync(tmp, content);
+  fs.writeFileSync(tmp, content, { mode: 0o600 });
   fs.renameSync(tmp, file);
+  try { fs.chmodSync(file, 0o600); } catch { /* startup checks directory privacy */ }
 }
 const stateFile = uid => path.join(DATA, 'state-' + uid.replace(/[^a-zA-Z0-9_-]/g, '') + '.json');
 function readState(uid) {
@@ -70,7 +73,7 @@ const VAPID_SUBJECT = process.env.VAPID_SUBJECT || (SECURE ? ORIGIN : 'mailto:ad
 webpush.setVapidDetails(VAPID_SUBJECT, vapid.publicKey, vapid.privateKey);
 
 async function sendPush(userId, payload) {
-  const subs = db.subs.filter(s => s.userId === userId);
+  const subs = db.subs.filter(s => s.userId === userId && validPushSubscription(s));
   if (!subs.length) return;
   const body = JSON.stringify(payload);
   let dirty = false;
@@ -134,6 +137,7 @@ function userNow(tz) {
 }
 setInterval(() => {
   for (const user of db.users) {
+    if (user.disabled) continue;
     if (!db.subs.some(s => s.userId === user.id)) continue;
     const S = readState(user.id);
     if (!S?.reminder?.on) continue;
@@ -216,6 +220,10 @@ const clearCookie = `gymsid=; Path=/; Max-Age=0; HttpOnly;${SECURE} SameSite=Lax
 /* ---------- challenge store (in-memory, 5 min TTL) ---------- */
 const challenges = new Map(); // cid -> {challenge, name?, uid?, exp}
 function putChallenge(data) {
+  if (challenges.size >= MAX_CHALLENGES) {
+    const oldest = challenges.keys().next().value;
+    if (oldest) challenges.delete(oldest);
+  }
   const cid = crypto.randomBytes(16).toString('base64url');
   challenges.set(cid, { ...data, exp: Date.now() + 5 * 60000 });
   return cid;
@@ -266,7 +274,7 @@ setInterval(() => { for (const [k, v] of presence) if (Date.now() - v.updatedAt 
 
 /* ---------- routes ---------- */
 const routes = {
-  'GET /api/health': async (req, res) => json(res, 200, { ok: true, users: db.users.length }),
+  'GET /api/health': async (req, res) => json(res, 200, { ok: true }),
 
   // Public config the login screen needs before anyone is signed in. `coach` is absent unless
   // the instance has both switched the Coach on and successfully connected a provider — the
@@ -295,7 +303,7 @@ const routes = {
       rpName: RP_NAME, rpID: RP_ID,
       userID: Buffer.from(uid), userName: name, userDisplayName: name,
       attestationType: 'none',
-      authenticatorSelection: { residentKey: 'required', userVerification: 'preferred' },
+      authenticatorSelection: { residentKey: 'required', userVerification: 'required' },
       excludeCredentials: []
     });
     const cid = putChallenge({ challenge: options.challenge, name, uid, code });
@@ -313,7 +321,7 @@ const routes = {
         expectedChallenge: c.challenge,
         expectedOrigin: ORIGIN,
         expectedRPID: RP_ID,
-        requireUserVerification: false
+        requireUserVerification: true
       });
     } catch (e) { return json(res, 400, { error: 'verification failed: ' + e.message }); }
     if (!verification.verified) return json(res, 400, { error: 'not verified' });
@@ -340,7 +348,7 @@ const routes = {
 
   'POST /api/login/options': async (req, res) => {
     const options = await generateAuthenticationOptions({
-      rpID: RP_ID, userVerification: 'preferred', allowCredentials: []
+      rpID: RP_ID, userVerification: 'required', allowCredentials: []
     });
     const cid = putChallenge({ challenge: options.challenge });
     json(res, 200, { cid, options });
@@ -359,7 +367,7 @@ const routes = {
         expectedChallenge: c.challenge,
         expectedOrigin: ORIGIN,
         expectedRPID: RP_ID,
-        requireUserVerification: false,
+        requireUserVerification: true,
         credential: {
           id: cred.id,
           publicKey: b64uToBuf(cred.publicKey),
@@ -417,7 +425,7 @@ const routes = {
     if (!user) return json(res, 401, { error: 'not signed in' });
     const body = await readBody(req);
     const sub = body.subscription;
-    if (!sub?.endpoint || !sub?.keys?.p256dh || !sub?.keys?.auth) return json(res, 400, { error: 'invalid subscription' });
+    if (!validPushSubscription(sub)) return json(res, 400, { error: 'invalid push service endpoint' });
     db.subs = db.subs.filter(s => s.endpoint !== sub.endpoint);
     db.subs.push({ userId: user.id, endpoint: sub.endpoint, keys: sub.keys, created: new Date().toISOString() });
     saveDb();
@@ -519,7 +527,11 @@ const routes = {
     if (!u) return json(res, 404, { error: 'no such user' });
     if (isAdmin(u)) return json(res, 400, { error: 'cannot disable an admin' });
     u.disabled = !!body.disabled;
-    if (u.disabled) presence.delete(u.id);   // drop them off "training now" at once
+    if (u.disabled) {
+      presence.delete(u.id);                // drop them off "training now" at once
+      cancelRestTimer(u.id);
+      coachJobs.clearUser(u.id);
+    }
     saveDb();
     json(res, 200, { ok: true, id: u.id, disabled: u.disabled });
   },
@@ -581,11 +593,25 @@ coachJobs.setProposalHook((uid, pending) => {
     tag: 'coach-proposal', url: '#/coach'
   });
 });
-startCadence({ users: () => db.users, userNow });
+startCadence({ users: () => db.users.filter(u => !u.disabled), userNow });
+
+const authLimit = createRateLimiter({ windowMs: 60_000, max: 30 });
+const authGlobalLimit = createRateLimiter({ windowMs: 60_000, max: 300 });
+// Shipped nginx overwrites X-Real-IP. Operators exposing the API directly or through another
+// proxy must likewise overwrite (not append) this header or omit it entirely.
+const clientAddress = req => String(req.headers['x-real-ip'] || req.socket.remoteAddress || 'unknown');
 
 http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://x');
   const key = req.method + ' ' + url.pathname;
+  if (!originAllowed(req, ORIGIN)) return json(res, 403, { error: 'origin not allowed' });
+  if (!jsonContentTypeAllowed(req)) return json(res, 415, { error: 'application/json required' });
+  if (key === 'POST /api/register/options' || key === 'POST /api/register/verify' ||
+      key === 'POST /api/login/options' || key === 'POST /api/login/verify') {
+    const limit = authLimit(clientAddress(req));
+    const globalLimit = authGlobalLimit('all');
+    if (!limit.allowed || !globalLimit.allowed) return json(res, 429, { error: 'too many authentication attempts' }, { 'Retry-After': String(Math.max(limit.retryAfter, globalLimit.retryAfter)) });
+  }
   const handler = routes[key];
   if (!handler) return json(res, 404, { error: 'not found' });
   try { await handler(req, res); }

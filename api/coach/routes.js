@@ -131,7 +131,11 @@ export function coachRoutes({ json, readBody, readSession, requireAdmin }) {
         if (body.provider !== cfgStore.load().provider) patch.auth = null;
         patch.provider = body.provider;
       }
-      if (body.model !== undefined) patch.model = body.model ? String(body.model).slice(0, 80) : null;
+      if (body.model !== undefined) {
+        const model = body.model ? String(body.model).slice(0, 80) : null;
+        if (model && !/^[a-zA-Z0-9][a-zA-Z0-9._:/-]{0,79}$/.test(model)) return json(res, 400, { error: 'invalid model identifier' });
+        patch.model = model;
+      }
       if (body.caps) {
         patch.caps = {
           perProfileDaily: Math.max(0, Math.min(200, +body.caps.perProfileDaily || 0)),
