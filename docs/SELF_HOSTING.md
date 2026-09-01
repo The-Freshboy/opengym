@@ -8,7 +8,7 @@ This guide takes you from "just cloned it" to "using it from my phone over the i
 Requirements: [Docker](https://docs.docker.com/get-docker/) with the Compose plugin.
 
 ```bash
-git clone https://github.com/DuarteSantos8/gym-app opengym
+git clone https://github.com/The-Freshboy/opengym.git
 cd opengym
 cp .env.example .env
 docker compose pull   # prebuilt images from ghcr.io (amd64 + arm64) — or skip and build from source
@@ -24,7 +24,7 @@ Check it's healthy:
 
 ```bash
 docker compose ps
-curl http://localhost:8080/api/health      # {"ok":true,...}
+curl http://localhost:8080/api/health      # {"ok":true}
 ```
 
 Logs: `docker compose logs -f`. Stop: `docker compose down`.

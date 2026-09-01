@@ -16,6 +16,7 @@ import { forgetCoach } from '../lib/coach-api.js'
 import Icon from '../components/Icon.jsx'
 import { Section, Row, SelectRow, Switch, Segmented, Button, TextField } from '../components/ui.jsx'
 import { applyReviewedPlan, compareReviewedBackup, restoreReviewedPlan, snapshotPlan, validateReviewedBackup } from '../lib/backup-review.js'
+import { validateFullBackup } from '../lib/backup-full.js'
 
 const PLAN_RECOVERY_KEY = 'gym_reviewed_plan_recovery'
 
@@ -85,11 +86,12 @@ export default function Settings() {
   const doImport = ev => {
     const f = ev.target.files[0]; if (!f) return
     ev.target.value = ''
+    if (f.size > 5 * 1024 * 1024) return toast(t('Import failed: {0}', 'file is larger than 5 MB'))
     const rd = new FileReader()
     rd.onload = () => {
       try {
         const data = JSON.parse(rd.result)
-        if (!data.workouts || !data.routines) throw new Error('not an OpenGym backup')
+        validateFullBackup(data)
         confirmSheet({ title: t('Import backup?'), message: t('This replaces all current data with the backup file.'), confirmText: t('Import'), danger: true, onConfirm: () => { replaceState(Object.assign(JSON.parse(JSON.stringify(DEF)), data), true); toast(t('Backup imported')) } })
       } catch (e) { toast(t('Import failed: {0}', e.message)) }
     }
@@ -274,7 +276,7 @@ export default function Settings() {
 
     <div className="dim small" style={{ textAlign: 'center', marginTop: 4, lineHeight: 1.6 }}>
       openGym · {t('free & open source (AGPL v3)')}<br />
-      <a href="https://github.com/DuarteSantos8/openGym" target="_blank" rel="noopener">source code</a> · exercise data: hasaneyldrm/exercises-dataset (CC)
+      <a href="https://github.com/The-Freshboy/opengym" target="_blank" rel="noopener">source code</a> · exercise data: hasaneyldrm/exercises-dataset (CC)
     </div>
   </div>
 }
