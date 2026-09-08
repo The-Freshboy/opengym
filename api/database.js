@@ -1,7 +1,10 @@
 import fs from 'node:fs'
 import path from 'node:path'
 
-export const emptyDatabase = () => ({ users: [], creds: [], subs: [], invites: [], audit: [], ptProfiles: {} })
+export const emptyDatabase = () => ({
+  users: [], creds: [], subs: [], invites: [], audit: [], ptProfiles: {},
+  coachLinks: [], coachItems: [], progressPhotos: {}
+})
 
 export function loadDatabase(file) {
   let raw
@@ -15,11 +18,17 @@ export function loadDatabase(file) {
   catch (error) { throw new Error('Account database is corrupt; startup stopped to protect existing data', { cause: error }) }
   if (!db || typeof db !== 'object' || Array.isArray(db) || !Array.isArray(db.users) || !Array.isArray(db.creds))
     throw new Error('Account database has an invalid structure; startup stopped to protect existing data')
-  for (const key of ['subs', 'invites', 'audit']) if (db[key] !== undefined && !Array.isArray(db[key]))
+  for (const key of ['subs', 'invites', 'audit', 'coachLinks', 'coachItems']) if (db[key] !== undefined && !Array.isArray(db[key]))
     throw new Error(`Account database has invalid ${key}; startup stopped to protect existing data`)
   if (db.ptProfiles !== undefined && (!db.ptProfiles || typeof db.ptProfiles !== 'object' || Array.isArray(db.ptProfiles)))
     throw new Error('Account database has invalid PT profiles; startup stopped to protect existing data')
-  return { ...db, subs: db.subs || [], invites: db.invites || [], audit: db.audit || [], ptProfiles: db.ptProfiles || {} }
+  if (db.progressPhotos !== undefined && (!db.progressPhotos || typeof db.progressPhotos !== 'object' || Array.isArray(db.progressPhotos)))
+    throw new Error('Account database has invalid progress-photo metadata; startup stopped to protect existing data')
+  return {
+    ...db,
+    subs: db.subs || [], invites: db.invites || [], audit: db.audit || [], ptProfiles: db.ptProfiles || {},
+    coachLinks: db.coachLinks || [], coachItems: db.coachItems || [], progressPhotos: db.progressPhotos || {}
+  }
 }
 
 export function saveDatabase(file, db) {

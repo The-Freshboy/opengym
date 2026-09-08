@@ -9,9 +9,13 @@ export function browserWriteError(req, origin) {
 
 export function stateInputError(state) {
   if (!state || typeof state !== 'object' || Array.isArray(state)) return 'state must be an object'
-  const bounds = { routines: 500, customEx: 1000, workouts: 20000, bodyweight: 20000, goals: 200, goalResults: 5000, trainingBlocks: 500 }
+  const bounds = {
+    routines: 500, customEx: 1000, workouts: 20000, bodyweight: 20000, goals: 200,
+    goalResults: 5000, trainingBlocks: 500, measurements: 5000,
+    substitutionHistory: 10000, sessionNotes: 20000
+  }
   for (const [key, max] of Object.entries(bounds)) if (state[key] !== undefined && (!Array.isArray(state[key]) || state[key].length > max)) return `${key} must be an array with at most ${max} entries`
-  for (const key of ['week', 'dayPlan', 'exWeights', 'readiness']) if (state[key] !== undefined && (!state[key] || typeof state[key] !== 'object' || Array.isArray(state[key]) || Object.keys(state[key]).length > 20000)) return `invalid ${key}`
+  for (const key of ['week', 'dayPlan', 'exWeights', 'readiness', 'exerciseNotes', 'exercisePreferences']) if (state[key] !== undefined && (!state[key] || typeof state[key] !== 'object' || Array.isArray(state[key]) || Object.keys(state[key]).length > 20000)) return `invalid ${key}`
   if ((state.routines || []).some(r => !r || typeof r !== 'object' || !Array.isArray(r.ex) || r.ex.length > 100)) return 'invalid routine exercises'
   return null
 }

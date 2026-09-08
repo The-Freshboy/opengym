@@ -20,6 +20,7 @@ import { integrationRoutes } from './integrations.js';
 import { browserWriteError, stateInputError, clientAddress } from './request-guards.js';
 import { validPushEndpoint, pushAgent } from './push-transport.js';
 import { loadDatabase, saveDatabase } from './database.js';
+import { trainingFeatureRoutes, cleanupTrainingFeatures } from './training-features.js';
 
 const PORT = +(process.env.PORT || 3000);
 const DATA = process.env.DATA_DIR || '/data';
@@ -498,6 +499,7 @@ const routes = {
     if (isAdmin(user)) return json(res, 400, { error: 'an admin account cannot delete itself' });
     try { fs.unlinkSync(stateFile(user.id)); } catch (e) { if (e.code !== 'ENOENT') throw e; }
     presence.delete(user.id); cancelRestTimer(user.id); coachJobs.clearUser(user.id);
+    cleanupTrainingFeatures({ dataDir: DATA, db }, user.id);
     db.creds = db.creds.filter(c => c.userId !== user.id);
     db.subs = db.subs.filter(s => s.userId !== user.id);
     db.users = db.users.filter(u => u.id !== user.id);
@@ -771,6 +773,10 @@ const routes = {
   // them: they are closures over db and SECRET, and passing them in keeps that module free of
   // a cycle. Every one of them is inert while the feature is unconfigured.
   ...coachRoutes({ json, readBody, readSession, requireAdmin }),
+  ...trainingFeatureRoutes({
+    json, readBody, readSession, users: () => db.users, db, saveDb, stateStore,
+    dataDir: DATA, sendPush, audit
+  }),
   ...integrationRoutes({ json, readBody, readSession, users: () => db.users, stateStore, dataDir: DATA, origin: ORIGIN, enabled: INTEGRATIONS_ENABLED })
 };
 

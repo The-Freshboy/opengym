@@ -34,6 +34,7 @@ export const DATA_CATEGORIES = [
   'training',    // logged sets, targets, effort ratings, durations, PRs in the review window
   'bodyweight',  // weigh-ins in the window and your goal weight
   'profile',     // the intake answers you gave the Coach, including any limitations
+  'context',     // user-authored Coach chat/context such as travel, illness or schedule constraints
   'prefs'        // unit, language, effort scale
 ];
 

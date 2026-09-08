@@ -20,6 +20,8 @@ import * as cfgStore from './config.js';
 import { adapterFor } from './adapters/index.js';
 import { scientificReview } from './science.js';
 import * as payloadLib from './payload.js';
+import { contextForPayload, conversationForPayload, recordCoachAssistantMessage } from '../coach-context.js';
+import { applyCoachContextToScience } from '../coach-context-science.js';
 import { extractJSON, validatePlan, validateReview, contractOK } from './validate.js';
 
 const DATA = process.env.DATA_DIR || '/data';
@@ -147,6 +149,7 @@ export function enqueue(uid, opts) {
     intake: opts.intake || null,
     note: opts.note || null,
     refine: opts.refine || null,
+    reviewId: opts.reviewId || null,
     state: 'queued',
     startedAt: Date.now()
   };
@@ -183,6 +186,16 @@ function finish(job, result) {
     pending: result.pending !== undefined ? result.pending : rec.pending,
     history
   });
+  if (job.trigger === 'chat') {
+    const changes = Array.isArray(result.pending?.changes) ? result.pending.changes.length : 0;
+    const answer = result.pending?.summary || (result.outcome === 'failed'
+      ? 'I could not complete that review. Your plan and saved context were left unchanged.'
+      : null);
+    if (answer) recordCoachAssistantMessage(job.uid, {
+      jobId: job.id, reviewId: job.reviewId || result.pending?.id || null,
+      text: answer, revised: result.outcome === 'ready', changes, failed: result.outcome === 'failed'
+    });
+  }
   cfgStore.logJob({
     at: new Date().toISOString(), uid: job.uid, kind: job.kind, trigger: job.trigger,
     outcome: result.outcome, errorClass: result.errorClass || null,
@@ -237,7 +250,15 @@ async function execute(job) {
     refine: job.refine,
     previous: pendingCreate?.bundle || null
   });
-  if (job.kind === 'review') payload.science = scientificReview(payload);
+  if (job.kind === 'review') {
+    const userContext = contextForPayload(job.uid, { from: payload.window?.from || null, to: payload.window?.to || null });
+    if (userContext.length) payload.userContext = userContext;
+    if (job.trigger === 'chat') {
+      const conversation = conversationForPayload(job.uid, 12);
+      if (conversation.length) payload.conversation = conversation;
+    }
+    payload.science = applyCoachContextToScience(scientificReview(payload), payload);
+  }
 
   const jobDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coach-'));
   const env = cfgStore.jobEnv(jobDir);
@@ -262,7 +283,7 @@ async function execute(job) {
       // A manual scientific review still deserves a readable report even when the safest
       // recommendation is to leave the plan alone. Scheduled reviews stay quiet unless they
       // have an actionable change, preserving the no-noise cadence promise.
-      if (job.trigger === 'manual' && job.kind === 'review') {
+      if ((job.trigger === 'manual' || job.trigger === 'chat') && job.kind === 'review') {
         const pending = {
           id: job.id, kind: job.kind, createdAt: Date.now(),
           expiresAt: Date.now() + PENDING_DAYS * 86400000,

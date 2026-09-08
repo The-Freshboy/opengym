@@ -10,6 +10,7 @@ import * as jobs from './jobs.js';
 import { adapterFor } from './adapters/index.js';
 import { DATA_CATEGORIES } from './payload.js';
 import { evidenceManifest } from './science.js';
+import { CONTEXT_REASONS, addCoachContext, clearCoachContext, readCoachContext, recordCoachUserMessage, removeCoachContext } from '../coach-context.js';
 
 // Job failures the user sees, in the app's own voice. The raw provider detail never reaches
 // them — it goes to the admin card, which is where someone can act on it (FR-47).
@@ -54,6 +55,46 @@ export function coachRoutes({ json, readBody, readSession, requireAdmin }) {
       json(res, 200, jobs.status(user.id));
     },
 
+
+    // Context-aware Coach conversation. The chat re-runs the normal review path, so any plan
+    // change remains a proposal that the user must explicitly approve. Structured contexts are
+    // user-authored facts; the server never infers travel/illness dates from free text.
+    'GET /api/coach/chat': async (req, res) => {
+      const user = guard(req, res); if (!user) return;
+      const rec = readCoachContext(user.id);
+      json(res, 200, { messages: rec.messages, contexts: rec.contexts, contextReasons: CONTEXT_REASONS });
+    },
+
+    'POST /api/coach/context': async (req, res) => {
+      const user = guard(req, res); if (!user) return;
+      const body = await readBody(req);
+      try { json(res, 200, { context: addCoachContext(user.id, body.context || body) }); }
+      catch (e) { json(res, 400, { error: e.message }); }
+    },
+
+    'POST /api/coach/context/delete': async (req, res) => {
+      const user = guard(req, res); if (!user) return;
+      const body = await readBody(req);
+      if (!removeCoachContext(user.id, String(body.id || ''))) return json(res, 404, { error: 'context not found' });
+      json(res, 200, { ok: true });
+    },
+
+    'POST /api/coach/chat': async (req, res) => {
+      const user = guard(req, res); if (!user) return;
+      const body = await readBody(req);
+      const message = String(body.message || '').trim().slice(0, 1500);
+      if (!message) return json(res, 400, { error: 'message required' });
+      let context = null;
+      try { if (body.context) context = addCoachContext(user.id, body.context); }
+      catch (e) { return json(res, 400, { error: e.message }); }
+      try {
+        const reviewId = body.reviewId ? String(body.reviewId).slice(0, 80) : jobs.status(user.id)?.pending?.id || null;
+        const job = jobs.enqueue(user.id, { kind: 'review', trigger: 'chat', note: message, reviewId });
+        const sent = recordCoachUserMessage(user.id, { jobId: job.id, message, reviewId, contextId: context?.id || null });
+        json(res, 202, { job, message: sent, context });
+      } catch (e) { failEnqueue(res, e); }
+    },
+
     'POST /api/coach/plan': async (req, res) => {
       const user = guard(req, res); if (!user) return;
       const body = await readBody(req);
@@ -92,6 +133,7 @@ export function coachRoutes({ json, readBody, readSession, requireAdmin }) {
       const user = readSession(req);
       if (!user) return json(res, 401, { error: 'not signed in' });
       jobs.clearUser(user.id);
+      clearCoachContext(user.id);
       json(res, 200, { ok: true });
     },
 
