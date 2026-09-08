@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useStore } from '../store/useStore.js'
 import { useUI } from '../store/useUI.js'
 import { t } from '../lib/i18n.js'
-import { fmtDate } from '../lib/format.js'
+import { fmtDate, todayISO } from '../lib/format.js'
 import { exLine } from '../lib/history.js'
 import { loadOfRoutine } from '../lib/muscles.js'
 import { DEMO } from '../lib/demo.js'
@@ -12,7 +12,10 @@ import {
   markStale, applicable, applyChangeSet, applyCreatedPlan, recordDismissal,
   changeTitle, changeValues, exName, coachAvailable
 } from '../lib/coach.js'
-import { useCoachStatus, resolvePending, refinePlan } from '../lib/coach-api.js'
+import {
+  useCoachStatus, resolvePending, refinePlan, coachConversation,
+  addCoachContext, deleteCoachContext, sendCoachMessage
+} from '../lib/coach-api.js'
 import { confirmSheet } from '../sheets.jsx'
 import Icon from '../components/Icon.jsx'
 import BodyMap from '../components/BodyMap.jsx'
@@ -32,7 +35,7 @@ export default function CoachProposal() {
   const config = useStore(s => s.config)
   const update = useStore(s => s.update)
   const toast = useUI(s => s.toast)
-  const { pending, loading, refresh } = useCoachStatus(true)
+  const { pending, loading, job, refresh } = useCoachStatus(true)
 
   useEffect(() => { if (!coachAvailable(config, user, { demo: DEMO, mobile: MOBILE })) nav('/home', { replace: true }) }, [config, user])
   useEffect(() => { if (!loading && !pending) nav('/coach', { replace: true }) }, [loading, pending])
@@ -40,7 +43,7 @@ export default function CoachProposal() {
 
   return pending.kind === 'create'
     ? <CreatedPlan p={pending} S={S} update={update} toast={toast} nav={nav} refresh={refresh} />
-    : <ChangeSet p={pending} S={S} update={update} toast={toast} nav={nav} />
+    : <ChangeSet p={pending} S={S} update={update} toast={toast} nav={nav} job={job} refresh={refresh} />
 }
 
 /* ============================ a created plan ============================ */
@@ -129,7 +132,7 @@ function CreatedPlan({ p, S, update, toast, nav, refresh }) {
 
 /* ============================ a change-set ============================ */
 
-function ChangeSet({ p, S, update, toast, nav }) {
+function ChangeSet({ p, S, update, toast, nav, job, refresh }) {
   // Staleness is decided against the *live* plan every render: someone may have edited it on
   // another device while this screen was open.
   const marked = useMemo(() => markStale(p, S), [p, S])
@@ -214,6 +217,8 @@ function ChangeSet({ p, S, update, toast, nav }) {
       <div className="dim small" style={{ marginTop: 8 }}>{t('These change nothing on their own.')}</div>
     </div>}
 
+    <CoachConversation reviewId={marked.id} job={job} refreshStatus={refresh} toast={toast} />
+
     <Button variant="primary" icon="check" onClick={apply}>
       {reportOnly ? t('Done') : accepted.size ? t(accepted.size === 1 ? 'Apply {0} change' : 'Apply {0} changes', accepted.size) : t('Apply nothing')}
     </Button>
@@ -223,9 +228,115 @@ function ChangeSet({ p, S, update, toast, nav }) {
   </div>
 }
 
+const CONTEXT_LABELS = {
+  travel: 'Travel', illness: 'Illness', work: 'Work', injury: 'Injury',
+  equipment: 'Equipment', deload: 'Deload', schedule: 'Schedule', other: 'Other'
+}
+
+function CoachConversation({ reviewId, job, refreshStatus, toast }) {
+  const today = todayISO()
+  const [open, setOpen] = useState(false)
+  const [data, setData] = useState({ messages: [], contexts: [], contextReasons: Object.keys(CONTEXT_LABELS) })
+  const [context, setContext] = useState({ reason: 'travel', from: today, to: today, note: '', affectsAdherence: true })
+  const [message, setMessage] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  const load = async () => {
+    try { setData(await coachConversation()) } catch (e) { toast(e.message || t('Could not load Coach conversation')) }
+  }
+  useEffect(() => { if (open) load() }, [open])
+  useEffect(() => { if (open && !job) load() }, [open, job])
+
+  const saveContext = async e => {
+    e.preventDefault()
+    if (!context.from || !context.to) return
+    setBusy(true)
+    try {
+      await addCoachContext(context)
+      setContext(c => ({ ...c, note: '' }))
+      await load()
+      toast(t('Context saved'))
+    } catch (error) { toast(error.message || t('Could not save context')) }
+    finally { setBusy(false) }
+  }
+  const removeContext = async id => {
+    setBusy(true)
+    try { await deleteCoachContext(id); await load(); toast(t('Context removed')) }
+    catch (error) { toast(error.message || t('Could not remove context')) }
+    finally { setBusy(false) }
+  }
+  const send = async e => {
+    e.preventDefault()
+    const text = message.trim()
+    if (!text || job) return
+    setBusy(true)
+    try {
+      await sendCoachMessage(text, reviewId)
+      setMessage('')
+      await Promise.all([load(), refreshStatus()])
+      toast(t('The Coach is reconsidering its suggestions…'))
+    } catch (error) { toast(error.message || t('Could not message the Coach')) }
+    finally { setBusy(false) }
+  }
+
+  return <div className="card">
+    <button className="row between" style={{ width: '100%', background: 'none', border: 0, color: 'inherit', padding: 0, textAlign: 'left' }} onClick={() => setOpen(v => !v)}>
+      <div>
+        <h2 style={{ margin: 0 }}>{t('Send context to Coach')}</h2>
+        <div className="dim small">{t('Explain travel, illness, work, injury, or schedule changes.')}</div>
+      </div>
+      <Icon name={open ? 'chevronDown' : 'chevronRight'} />
+    </button>
+    {open && <div style={{ marginTop: 12 }}>
+      <form onSubmit={saveContext}>
+        <label className="small">{t('What affected your training?')}
+          <select className="field" value={context.reason} onChange={e => setContext(c => ({ ...c, reason: e.target.value }))} style={{ marginTop: 5 }}>
+            {data.contextReasons.map(reason => <option key={reason} value={reason}>{t(CONTEXT_LABELS[reason] || reason)}</option>)}
+          </select>
+        </label>
+        <div className="row" style={{ gap: 8, marginTop: 10 }}>
+          <label className="small" style={{ flex: 1 }}>{t('From')}<input required className="field" type="date" value={context.from} onChange={e => setContext(c => ({ ...c, from: e.target.value }))} style={{ marginTop: 5 }} /></label>
+          <label className="small" style={{ flex: 1 }}>{t('To')}<input required className="field" type="date" min={context.from} value={context.to} onChange={e => setContext(c => ({ ...c, to: e.target.value }))} style={{ marginTop: 5 }} /></label>
+        </div>
+        <TextArea rows={2} maxLength={600} value={context.note} onChange={e => setContext(c => ({ ...c, note: e.target.value }))}
+          placeholder={t('Optional details, e.g. away for work with no gym access')} style={{ marginTop: 10 }} />
+        <label className="row small" style={{ gap: 9, margin: '10px 0' }}>
+          <Check checked={context.affectsAdherence} onChange={affectsAdherence => setContext(c => ({ ...c, affectsAdherence }))} size={24} />
+          <span>{t('Take this into account when judging adherence')}</span>
+        </label>
+        <Button disabled={busy || !context.from || !context.to} icon="plus">{t('Save context')}</Button>
+      </form>
+
+      {!!data.contexts.length && <div style={{ marginTop: 12, borderTop: '1px solid var(--sep)' }}>
+        {data.contexts.map(c => <div key={c.id} className="row between" style={{ gap: 8, padding: '10px 0', borderBottom: '1px solid var(--sep)' }}>
+          <div className="small" style={{ minWidth: 0 }}>
+            <div style={{ fontWeight: 600 }}>{t(CONTEXT_LABELS[c.reason] || c.reason)} · {fmtDate(c.from)}{c.to !== c.from ? ` – ${fmtDate(c.to)}` : ''}</div>
+            {!!c.note && <div className="dim" style={{ marginTop: 2 }}>{c.note}</div>}
+          </div>
+          <button className="iconbtn" disabled={busy} onClick={() => removeContext(c.id)} aria-label={t('Remove context')}><Icon name="xmark" /></button>
+        </div>)}
+      </div>}
+
+      {!!data.messages.length && <div style={{ marginTop: 12 }}>
+        {data.messages.slice(-8).map(m => <div key={m.id} style={{ margin: '7px 0', padding: '9px 11px', borderRadius: 12, background: m.role === 'user' ? 'var(--accent-soft)' : 'var(--fill)', lineHeight: 1.45 }} className="small">
+          <div className="dim" style={{ fontSize: '.68rem', marginBottom: 2 }}>{m.role === 'user' ? t('You') : t('Coach')}</div>{m.text}
+        </div>)}
+      </div>}
+      <form onSubmit={send} style={{ marginTop: 12 }}>
+        <TextArea rows={3} maxLength={1500} value={message} onChange={e => setMessage(e.target.value)} disabled={!!job}
+          placeholder={t('Ask why, correct an assumption, or ask the Coach to reconsider.')} />
+        <div style={{ height: 10 }} />
+        <Button variant="primary" icon="arrowUp" disabled={busy || !!job || !message.trim()}>{job ? t('Coach is thinking…') : t('Send to Coach')}</Button>
+      </form>
+      <div className="dim" style={{ fontSize: '.7rem', lineHeight: 1.4, marginTop: 8 }}>{t('Messages do not become saved facts unless you add them as context. Any plan change still needs your approval.')}</div>
+    </div>}
+  </div>
+}
+
 function ScienceCard({ report }) {
   const [open, setOpen] = useState(true)
   const source = id => (report.sources || []).find(s => s.id === id)
+  const adherence = report.measurements?.adherence
   return <div className="card">
     <button className="row between" style={{ width: '100%', background: 'none', border: 0, color: 'inherit', padding: 0, textAlign: 'left' }} onClick={() => setOpen(v => !v)}>
       <div>
@@ -235,6 +346,22 @@ function ScienceCard({ report }) {
       <Icon name={open ? 'chevronDown' : 'chevronRight'} />
     </button>
     {open && <>
+      {adherence && <div style={{ padding: '10px 0', borderTop: '1px solid var(--sep)' }}>
+        <div className="row" style={{ gap: 8 }}>
+          <div style={{ flex: 1 }}>
+            <div className="dim" style={{ fontSize: '.7rem' }}>{t('Observed adherence')}</div>
+            <div style={{ fontSize: '1.15rem', fontWeight: 650 }}>{Math.round(adherence.observedRate * 100)}%</div>
+          </div>
+          <Icon name="chevronRight" style={{ color: 'var(--label-3)' }} />
+          <div style={{ flex: 1 }}>
+            <div className="dim" style={{ fontSize: '.7rem' }}>{t('Context-adjusted')}</div>
+            <div style={{ fontSize: '1.15rem', fontWeight: 650, color: 'var(--accent)' }}>{Math.round(adherence.adjustedRate * 100)}%</div>
+          </div>
+        </div>
+        <div className="dim" style={{ fontSize: '.7rem', lineHeight: 1.4, marginTop: 5 }}>
+          {t('{0} of {1} planned sessions completed; {2} missed sessions covered by saved context.', adherence.sessions, adherence.expected, adherence.explainedMissedSessions)}
+        </div>
+      </div>}
       {(report.findings || []).map((f, i) => <div key={f.id || i} style={{ padding: '10px 0', borderTop: '1px solid var(--sep)' }}>
         <div className="row" style={{ gap: 7, marginBottom: 4 }}>
           <span className="tag acc">{t(f.category || 'finding')}</span>

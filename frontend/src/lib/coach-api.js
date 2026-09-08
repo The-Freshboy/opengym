@@ -29,6 +29,12 @@ export const resolvePending = async body => DEMO ? (await demo()).demoResolve() 
 export const forgetCoach = async () => DEMO ? (await demo()).demoResolve() : api('/api/coach/forget', { method: 'POST', body: '{}' })
 export const cancelCoach = async () => DEMO ? (await demo()).demoResolve() : api('/api/coach/cancel', { method: 'POST', body: '{}' })
 export const disclosure = async () => DEMO ? (await demo()).demoDisclosure() : api('/api/coach/disclosure')
+export const coachConversation = async () => DEMO ? { messages: [], contexts: [], contextReasons: [] } : api('/api/coach/chat')
+export const addCoachContext = async context => api('/api/coach/context', { method: 'POST', body: JSON.stringify({ context }) })
+export const deleteCoachContext = async id => api('/api/coach/context/delete', { method: 'POST', body: JSON.stringify({ id }) })
+export const sendCoachMessage = async (message, reviewId) => api('/api/coach/chat', {
+  method: 'POST', body: JSON.stringify({ message, ...(reviewId ? { reviewId } : {}) })
+})
 
 /**
  * Live job/proposal state.
