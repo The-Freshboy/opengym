@@ -873,6 +873,11 @@ h4.sec{
 .training-block-form .stp-w{max-width:220px}
 .training-block-form .stp-l{text-align:left;font-size:15px;color:var(--label)}
 .insight-records{display:flex;flex-direction:column}
+.insight-record-search{padding:12px 14px;border-bottom:1px solid var(--sep)}
+.insight-record-group>h3{display:flex;align-items:center;justify-content:space-between;margin:0;padding:13px 16px 7px;color:var(--label-2);font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.045em}
+.insight-record-group>h3 span{display:grid;place-items:center;min-width:22px;height:22px;padding:0 7px;border-radius:99px;background:var(--surface-2);color:var(--label-2);font-size:11px}
+.insight-record-group+.insight-record-group{border-top:6px solid var(--bg)}
+.insight-record-empty{padding:24px 16px}
 .insight-record{
   display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:14px;
   padding:14px 16px;border-bottom:1px solid var(--sep);

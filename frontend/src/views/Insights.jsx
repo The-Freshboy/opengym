@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useStore } from '../store/useStore.js'
 import { expandedRecords, insightSummary, readinessAdvice } from '../lib/insights.js'
 import { fmtDate, todayISO } from '../lib/format.js'
-import { Button, Section, TextField } from '../components/ui.jsx'
+import { Button, SearchField, Section, TextField } from '../components/ui.jsx'
 import Stepper from '../components/Stepper.jsx'
 import Icon from '../components/Icon.jsx'
 import { editTrainingBlock } from '../lib/training-log.js'
@@ -21,7 +21,13 @@ export default function Insights() {
   const nav = useNavigate(); const { S, update } = useStore(); const x = insightSummary(S); const advice = readinessAdvice(S, todayISO()); const records = expandedRecords(S)
   const [block, setBlock] = useState({ name: '', goal: '', weeks: 4 })
   const [showArchived, setShowArchived] = useState(false)
+  const [recordQuery, setRecordQuery] = useState('')
   const blocks = S.trainingBlocks || []
+  const visibleRecords = records.filter(record => `${record.name} ${record.type} ${record.value}`.toLowerCase().includes(recordQuery.trim().toLowerCase()))
+  const recordGroups = [
+    ['compound', 'Compound lifts'], ['other', 'Other strength exercises'],
+    ['timed', 'Timed holds'], ['activity', 'Activities']
+  ].map(([key, title]) => ({ key, title, records: visibleRecords.filter(record => record.group === key) })).filter(group => group.records.length)
   const addBlock = () => { if (!block.name.trim()) return; update(s => { s.trainingBlocks ||= []; s.trainingBlocks.push({ ...block, id: crypto.randomUUID(), start: todayISO(), active: true }) }); setBlock({ name: '', goal: '', weeks: 4 }) }
   return <div className="page">
     <div className="hdr"><div><h1>Insights</h1><div className="sub">Training trends and decisions</div></div><button className="iconbtn" onClick={() => nav('/history')} aria-label="History"><Icon name="history" /></button></div>
@@ -31,10 +37,13 @@ export default function Insights() {
     <p className="small dim">Adherence uses retained programme snapshots where available. Older planning intent cannot be reconstructed; missing or copied logs are not proof of fitness.</p>
     <Section title="Climbing"><div className="card"><div className="row between"><div><b>{x.climbing.length} sessions in 28 days</b><div className="small dim">{x.bestGrade ? `Latest logged grade: ${x.bestGrade}` : 'Log attempts, sends and grades for richer trends.'}</div></div></div></div></Section>
     <TrainingLoadView workouts={S.workouts} />
-    {!!records.length && <Section title="Personal records" footer={records.some(r => r.assumedUnit) ? `Older workouts without a saved unit are shown using your current ${S.unit || 'kg'} setting.` : null}><div className="insight-records">{records.map(r => <article className="insight-record" key={r.key}>
-      <div className="insight-record-copy"><span className="insight-record-type">{r.type}</span><strong>{r.name}</strong><span className="small dim">{fmtDate(r.date, true)}{r.assumedUnit ? ' · unit inferred' : ''}</span></div>
-      <div className="insight-record-value">{r.value}</div>
-    </article>)}</div></Section>}
+    {!!records.length && <Section title="Personal records" footer={records.some(r => r.assumedUnit) ? `Older workouts without a saved unit are shown using your current ${S.unit || 'kg'} setting.` : null}><div className="insight-record-search"><SearchField value={recordQuery} onChange={e => setRecordQuery(e.target.value)} onClear={() => setRecordQuery('')} placeholder="Search personal records" aria-label="Search personal records" /></div>
+      {!recordGroups.length && <div className="empty insight-record-empty">No matching records</div>}
+      {recordGroups.map(group => <div className="insight-record-group" key={group.key}><h3>{group.title}<span>{group.records.length}</span></h3><div className="insight-records">{group.records.map(r => <article className="insight-record" key={r.key}>
+        <div className="insight-record-copy"><span className="insight-record-type">{r.type}</span><strong>{r.name}</strong><span className="small dim">{fmtDate(r.date, true)}{r.assumedUnit ? ' · unit inferred' : ''}</span></div>
+        <div className="insight-record-value">{r.value}</div>
+      </article>)}</div></div>)}
+    </Section>}
     <Section title="Training blocks">
       <label className="small"><input type="checkbox" checked={showArchived} onChange={e => setShowArchived(e.target.checked)} /> Show archived blocks</label>
       {blocks.filter(b => showArchived || b.active !== false).map(b => <BlockCard key={`${b.id}-${b.active}`} block={b} save={next => update(s => { const index = s.trainingBlocks.findIndex(x => x.id === b.id); if (index >= 0) s.trainingBlocks[index] = next })} />)}

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { expandedRecords, insightSummary, readinessAdvice } from './insights.js'
+import { expandedRecords, insightSummary, isCompoundLift, readinessAdvice } from './insights.js'
 
 describe('insights', () => {
   it('uses retained previous planning intent before a template edit', () => {
@@ -30,5 +30,13 @@ describe('insights', () => {
     const records = expandedRecords({ unit: 'kg', customEx: [{ id: 'hold', n: 'Long hold' }], workouts: [{ d: '2026-09-02', entries: [{ id: 'hold', sets: [{ done: true, sec: 900 }, { done: true, w: 20, r: 10 }] }] }] })
     expect(records.find(x => x.key === 'timed:hold').value).toBe('15 min')
     expect(records.find(x => x.key.startsWith('weight:hold'))).toMatchObject({ value: '20 kg × 10', assumedUnit: true })
+  })
+  it('classifies compound lifts conservatively and sorts them before isolation work', () => {
+    expect(isCompoundLift('Barbell back squat')).toBe(true)
+    expect(isCompoundLift('Half kneeling cable row')).toBe(true)
+    expect(isCompoundLift('Lateral raise')).toBe(false)
+    expect(isCompoundLift('Leg extension')).toBe(false)
+    const records = expandedRecords({ unit: 'kg', customEx: [{ id: 'curl', n: 'Biceps curl' }, { id: 'squat', n: 'Back squat' }], workouts: [{ d: '2026-09-02', entries: [{ id: 'curl', sets: [{ done: true, w: 10, r: 10 }] }, { id: 'squat', sets: [{ done: true, w: 80, r: 5 }] }] }] })
+    expect(records.map(record => record.group)).toEqual(['compound', 'other'])
   })
 })
