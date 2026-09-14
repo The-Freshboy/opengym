@@ -2,6 +2,7 @@ import { effectiveRoutineIds } from './history.js'
 import { isoOf } from './format.js'
 import { isWorkingSet, sessionLoad } from './training-log.js'
 import { plannedStateAt } from './programme-history.js'
+import { exOr } from './exercises.js'
 
 export function insightSummary(S, today = new Date()) {
   const end = new Date(today); end.setHours(23, 59, 59, 999)
@@ -41,20 +42,27 @@ export function readinessAdvice(S, iso) {
 
 export function expandedRecords(S) {
   const out = []
+  const exerciseNames = new Map((S.customEx || []).map(exercise => [exercise.id, exercise.n]))
+  const exerciseName = id => exerciseNames.get(id) || exOr(id).n || 'Unknown exercise'
   for (const w of S.workouts || []) {
     if (w.kind === 'activity') {
-      if (w.durationMin) out.push({ type: 'Longest activity', value: `${w.durationMin} min`, score: w.durationMin, date: w.d })
-      if (w.sends) out.push({ type: 'Most climbing sends', value: String(w.sends), score: w.sends, date: w.d })
-      if (w.flashes) out.push({ type: 'Most climbing flashes', value: String(w.flashes), score: w.flashes, date: w.d })
+      if (w.durationMin) out.push({ key: 'activity-duration', type: 'Longest activity', name: w.activityType || w.name || 'Activity', value: `${w.durationMin} min`, score: w.durationMin, date: w.d })
+      if (w.sends) out.push({ key: 'climbing-sends', type: 'Most climbing sends', name: w.activityType || w.name || 'Climbing', value: String(w.sends), score: w.sends, date: w.d })
+      if (w.flashes) out.push({ key: 'climbing-flashes', type: 'Most climbing flashes', name: w.activityType || w.name || 'Climbing', value: String(w.flashes), score: w.flashes, date: w.d })
     }
     for (const e of w.entries || []) for (const s of e.sets || []) if (isWorkingSet(s)) {
-      if (s.sec) out.push({ type: 'Longest timed hold', value: `${s.sec}s`, score: s.sec, date: w.d })
+      const name = exerciseName(e.id)
+      if (s.sec) {
+        const seconds = Number(s.sec)
+        const value = seconds >= 60 && seconds % 60 === 0 ? `${seconds / 60} min` : `${seconds} sec`
+        out.push({ key: `timed:${e.id || name}`, type: 'Longest timed hold', name, value, score: seconds, date: w.d })
+      }
       const reps = s.r ?? s.reps
-      const unit = w.unit || `${S.unit || 'kg'} (assumed)`
-      if (reps > 0 && s.w > 0) out.push({ type: `Heaviest completed set · ${e.id || 'exercise'} · ${unit}`, value: `${s.w} ${unit} × ${reps}`, score: s.w, date: w.d })
+      const unit = w.unit || S.unit || 'kg'
+      if (reps > 0 && s.w > 0) out.push({ key: `weight:${e.id || name}:${unit}`, type: 'Heaviest completed set', name, value: `${s.w} ${unit} × ${reps}`, score: s.w, date: w.d, assumedUnit: !w.unit })
     }
   }
   const best = new Map()
-  for (const record of out) if (!best.has(record.type) || record.score > best.get(record.type).score) best.set(record.type, record)
-  return [...best.values()]
+  for (const record of out) if (!best.has(record.key) || record.score > best.get(record.key).score) best.set(record.key, record)
+  return [...best.values()].sort((a, b) => b.date.localeCompare(a.date) || a.type.localeCompare(b.type) || a.name.localeCompare(b.name))
 }

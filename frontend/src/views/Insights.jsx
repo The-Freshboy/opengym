@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useStore } from '../store/useStore.js'
 import { expandedRecords, insightSummary, readinessAdvice } from '../lib/insights.js'
-import { todayISO } from '../lib/format.js'
+import { fmtDate, todayISO } from '../lib/format.js'
 import { Button, Section, TextField } from '../components/ui.jsx'
 import Stepper from '../components/Stepper.jsx'
 import Icon from '../components/Icon.jsx'
@@ -31,7 +31,10 @@ export default function Insights() {
     <p className="small dim">Adherence uses retained programme snapshots where available. Older planning intent cannot be reconstructed; missing or copied logs are not proof of fitness.</p>
     <Section title="Climbing"><div className="card"><div className="row between"><div><b>{x.climbing.length} sessions in 28 days</b><div className="small dim">{x.bestGrade ? `Latest logged grade: ${x.bestGrade}` : 'Log attempts, sends and grades for richer trends.'}</div></div></div></div></Section>
     <TrainingLoadView workouts={S.workouts} />
-    {!!records.length && <Section title="Personal records">{records.map(r => <div className="card row between" key={r.type} style={{ marginBottom: 8 }}><div><b>{r.type}</b><div className="small dim">{r.date}</div></div><strong className="accent">{r.value}</strong></div>)}</Section>}
+    {!!records.length && <Section title="Personal records" footer={records.some(r => r.assumedUnit) ? `Older workouts without a saved unit are shown using your current ${S.unit || 'kg'} setting.` : null}><div className="insight-records">{records.map(r => <article className="insight-record" key={r.key}>
+      <div className="insight-record-copy"><span className="insight-record-type">{r.type}</span><strong>{r.name}</strong><span className="small dim">{fmtDate(r.date, true)}{r.assumedUnit ? ' · unit inferred' : ''}</span></div>
+      <div className="insight-record-value">{r.value}</div>
+    </article>)}</div></Section>}
     <Section title="Training blocks">
       <label className="small"><input type="checkbox" checked={showArchived} onChange={e => setShowArchived(e.target.checked)} /> Show archived blocks</label>
       {blocks.filter(b => showArchived || b.active !== false).map(b => <BlockCard key={`${b.id}-${b.active}`} block={b} save={next => update(s => { const index = s.trainingBlocks.findIndex(x => x.id === b.id); if (index >= 0) s.trainingBlocks[index] = next })} />)}
