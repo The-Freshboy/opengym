@@ -21,6 +21,7 @@ import { browserWriteError, stateInputError, clientAddress } from './request-gua
 import { validPushEndpoint, pushAgent } from './push-transport.js';
 import { loadDatabase, saveDatabase } from './database.js';
 import { trainingFeatureRoutes, cleanupTrainingFeatures } from './training-features.js';
+import { healthConnectRoutes } from './health-connect.js';
 
 const PORT = +(process.env.PORT || 3000);
 const DATA = process.env.DATA_DIR || '/data';
@@ -777,7 +778,8 @@ const routes = {
     json, readBody, readSession, users: () => db.users, db, saveDb, stateStore,
     dataDir: DATA, sendPush, audit
   }),
-  ...integrationRoutes({ json, readBody, readSession, users: () => db.users, stateStore, dataDir: DATA, origin: ORIGIN, enabled: INTEGRATIONS_ENABLED })
+  ...integrationRoutes({ json, readBody, readSession, users: () => db.users, stateStore, dataDir: DATA, origin: ORIGIN, enabled: INTEGRATIONS_ENABLED }),
+  ...healthConnectRoutes({ json, readBody, readSession, users: () => db.users, dataDir: DATA, origin: ORIGIN })
 };
 
 /* ---------- Coach: boot recovery, notifications, scheduled reviews ---------- */

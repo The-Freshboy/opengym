@@ -216,6 +216,7 @@ export default function Settings() {
       </> : user ? <>
         <Row icon="personCircle" iconTint="var(--grey)" title={user.name} subtitle={t('Signed in with passkey — data syncs to this profile.')} />
         <Row icon="shield" iconTint="var(--blue)" title="Restricted integrations" subtitle="Manage read access and approve proposed programme changes" accessory="chevron" onClick={() => nav('/settings/integrations')} />
+        <Row icon="heart" iconTint="var(--green)" title="Health Connect" subtitle="Sync Garmin health and exercise data from Android" accessory="chevron" onClick={() => nav('/settings/health-connect')} />
         {user.admin && <Row icon="wrench" iconTint="var(--indigo)" title={t('Admin dashboard')} accessory="chevron" onClick={() => nav('/admin')} />}
         <Row icon="signOut" iconTint="var(--red)" title={t('Sign out')} danger onClick={() => confirmSheet({ title: t('Sign out?'), message: t('Your data must sync successfully before it is cleared from this device.'), confirmText: t('Sign out'), danger: true, onConfirm: async () => { try { await signOut(); nav('/home') } catch (e) { toast(e.message) } } })} />
         <Row icon="shield" iconTint="var(--red)" title={t('Sign out everywhere')} subtitle={t('Ends this profile’s sessions on all your devices.')} danger onClick={signOutEverywhere} />

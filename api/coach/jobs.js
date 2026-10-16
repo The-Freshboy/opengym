@@ -21,6 +21,7 @@ import { adapterFor } from './adapters/index.js';
 import { scientificReview } from './science.js';
 import * as payloadLib from './payload.js';
 import { contextForPayload, conversationForPayload, recordCoachAssistantMessage } from '../coach-context.js';
+import { healthCoachSummary } from '../health-connect.js';
 import { applyCoachContextToScience } from '../coach-context-science.js';
 import { extractJSON, validatePlan, validateReview, contractOK } from './validate.js';
 
@@ -252,6 +253,8 @@ async function execute(job) {
   });
   if (job.kind === 'review') {
     const userContext = contextForPayload(job.uid, { from: payload.window?.from || null, to: payload.window?.to || null });
+    const healthConnect = healthCoachSummary(DATA, job.uid);
+    if (healthConnect) payload.healthConnect = healthConnect;
     if (userContext.length) payload.userContext = userContext;
     if (job.trigger === 'chat') {
       const conversation = conversationForPayload(job.uid, 12);

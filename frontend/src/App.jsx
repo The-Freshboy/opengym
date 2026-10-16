@@ -31,6 +31,7 @@ const Library = lazy(() => import('./views/Library.jsx'))
 const Settings = lazy(() => import('./views/Settings.jsx'))
 const SyncRecovery = lazy(() => import('./views/SyncRecovery.jsx'))
 const Integrations = lazy(() => import('./views/Integrations.jsx'))
+const HealthConnect = lazy(() => import('./views/HealthConnect.jsx'))
 const ReviewStatus = lazy(() => import('./views/ReviewStatus.jsx'))
 const Admin = lazy(() => import('./views/Admin.jsx'))
 const Coach = lazy(() => import('./views/Coach.jsx'))
@@ -97,6 +98,7 @@ function Shell() {
               <Route path="/settings" element={<Settings />} />
               <Route path="/settings/sync" element={<SyncRecovery />} />
               <Route path="/settings/integrations" element={<Integrations />} />
+              <Route path="/settings/health-connect" element={<HealthConnect />} />
               <Route path="/settings/reviews" element={<ReviewStatus />} />
               {/* The Coach screens gate themselves on the instance config; the routes exist
                   unconditionally so a deep link from a notification lands somewhere sane
